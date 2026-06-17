@@ -352,10 +352,9 @@ EOF
 
 disable_kde_services() {
     _cmd_exists systemctl || return 0
-    echo "Deteniendo y enmascarando servicios innecesarios de KDE..."
-    systemctl --user stop plasma-kactivitymanagerd.service kunifiedpush-distributor.service 2>/dev/null || true
-    systemctl --user mask plasma-kactivitymanagerd.service kunifiedpush-distributor.service 2>/dev/null || true
-    ok "Servicios de KDE desactivados"
+    echo "Asegurando que los servicios de KDE no estén enmascarados..."
+    systemctl --user unmask plasma-kactivitymanagerd.service kunifiedpush-distributor.service 2>/dev/null || true
+    ok "Servicios de KDE desenmascarados"
 }
 
 configure_environment() {
