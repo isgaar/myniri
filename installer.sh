@@ -60,6 +60,7 @@ readonly -a APT_BUILD_DEPS=(
     scdoc libgdk-pixbuf-2.0-dev libdrm-dev libgbm-dev libxcb-dri3-dev
     libxcb-present-dev libxcb-res0-dev libxcb-render-util0-dev libgles2-mesa-dev
     libpolkit-agent-1-dev libudev-dev libgbm-dev libegl1-mesa-dev rustup
+    clang libclang-dev libxcb-cursor-dev wget
 )
 
 readonly -a ARCH_PKGS=(
@@ -168,9 +169,44 @@ install_deps() {
                 warn "No se pudo clonar Niri"
             fi
             rm -rf "$tmp_niri"
-        else
-            ok "Niri ya está instalado, omitiendo compilación"
         fi
+
+        # Garantizar archivos de integración de sesión de systemd y portales para Niri
+        echo "Configurando archivos de sesión systemd y portales para Niri..."
+        local systemd_user_dir="/usr/lib/systemd/user"
+        local portal_dir="/usr/share/xdg-desktop-portal"
+        
+        sudo mkdir -p "$systemd_user_dir" "$portal_dir"
+        
+        local file
+        for file in niri.service niri-shutdown.target; do
+            if [[ ! -f "$systemd_user_dir/$file" ]]; then
+                local tmp_file
+                tmp_file=$(mktemp)
+                if wget -q -O "$tmp_file" "https://raw.githubusercontent.com/niri-wm/niri/main/resources/$file"; then
+                    sudo cp "$tmp_file" "$systemd_user_dir/$file"
+                    ok "$file instalado correctamente"
+                else
+                    warn "No se pudo descargar $file"
+                fi
+                rm -f "$tmp_file"
+            fi
+        done
+        
+        if [[ ! -f "$portal_dir/niri-portals.conf" ]]; then
+            local tmp_file
+            tmp_file=$(mktemp)
+            if wget -q -O "$tmp_file" "https://raw.githubusercontent.com/niri-wm/niri/main/resources/niri-portals.conf"; then
+                sudo cp "$tmp_file" "$portal_dir/niri-portals.conf"
+                ok "niri-portals.conf instalado correctamente"
+            else
+                warn "No se pudo descargar niri-portals.conf"
+            fi
+            rm -f "$tmp_file"
+        fi
+        
+        systemctl --user daemon-reload || true
+
 
         # 2. Compilar e instalar xwayland-satellite
         if ! _cmd_exists xwayland-satellite; then
@@ -193,6 +229,22 @@ install_deps() {
 
         # 3. Compilar Quickshell desde código fuente si no existe
         if ! _cmd_exists qs && ! _cmd_exists quickshell; then
+            # Garantizar que el protocolo ext-background-effect-v1.xml existe en wayland-protocols (necesario para Quickshell)
+            local bg_effect_proto="/usr/share/wayland-protocols/staging/ext-background-effect/ext-background-effect-v1.xml"
+            if [[ ! -f "$bg_effect_proto" ]]; then
+                echo "El protocolo ext-background-effect-v1.xml no se encuentra en wayland-protocols. Descargándolo..."
+                local tmp_proto
+                tmp_proto=$(mktemp -d)
+                if wget -q -O "$tmp_proto/ext-background-effect-v1.xml" "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/raw/main/staging/ext-background-effect/ext-background-effect-v1.xml"; then
+                    sudo mkdir -p "$(dirname "$bg_effect_proto")"
+                    sudo cp "$tmp_proto/ext-background-effect-v1.xml" "$bg_effect_proto"
+                    ok "Protocolo ext-background-effect-v1.xml instalado correctamente"
+                else
+                    warn "No se pudo descargar el protocolo ext-background-effect-v1.xml. La compilación de Quickshell podría fallar."
+                fi
+                rm -rf "$tmp_proto"
+            fi
+
             echo "Compilando e instalando Quickshell desde código fuente..."
             local tmp_qs
             tmp_qs=$(mktemp -d -p "$HOME")
