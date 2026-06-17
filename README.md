@@ -1,20 +1,20 @@
 <div align="center">
-  <h1>MySway Environment v4.0</h1>
-  <p><strong>Un entorno premium para Linux construido con Sway, Waybar y Quickshell.</strong></p>
+  <h1>MyNiri Environment v4.0</h1>
+  <p><strong>Un entorno premium para Linux construido con Niri, Waybar y Quickshell.</strong></p>
 
   ![Fedora](https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white)
   ![Debian](https://img.shields.io/badge/Debian-A81D33?style=for-the-badge&logo=debian&logoColor=white)
   ![Wayland](https://img.shields.io/badge/Wayland-2585A6?style=for-the-badge&logo=wayland&logoColor=white)
   
   <br>
-  <img src="assets/screenshot.png" alt="MySway Desktop Screenshot" width="800"/>
+  <img src="assets/screenshot.png" alt="MyNiri Desktop Screenshot" width="800"/>
 </div>
 
 ---
 
 ## Visión General
 
-Este repositorio contiene el setup personal de Ismael. Provee una experiencia de escritorio moderna, robusta y altamente estética diseñada para **Fedora** y **Debian**. Reemplaza los elementos crudos de la terminal por componentes gráficos avanzados inspirados en el diseño premium de Honey e iOS, construidos principalmente con `Quickshell` (QML/Qt6) y `Sway`.
+Este repositorio contiene el setup personal de Ismael. Provee una experiencia de escritorio moderna, robusta y altamente estética diseñada para **Debian** (y compatible con Fedora y Arch). Niri es un compositor de ventanas de mosaico dinámico por desplazamiento infinito en Wayland. Reemplaza los elementos tradicionales de Sway/Tiling por una experiencia fluida de columnas deslizantes e integra componentes gráficos avanzados inspirados en el diseño premium de Honey e iOS, construidos principalmente con `Quickshell` (QML/Qt6).
 
 ## Características Principales
 
@@ -26,16 +26,17 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
 * **Componentes Exclusivos:** Sliders en forma de píldora interactiva sin perillas para control de música, brillo y audio.
 
 ### Aplicaciones Integradas
-* **Settings App (`Super + i`):** Aplicación completa de ajustes en QML con páginas de Conexiones (Wi-Fi/Ethernet/Bluetooth embebidos sin KDE), Audio (selector de sinks con iconos por tipo), Información del Sistema dinámica, y Personalización (colores, animaciones).
+* **Settings App (`Super + i`):** Aplicación completa de ajustes en QML con páginas de Conexiones (Wi-Fi/Ethernet/Bluetooth embebidos sin KDE), Audio (selector de sinks con iconos por tipo), Información del Sistema dinámica, y Personalización (colores, animaciones, esquinas, blur y gaps).
 * **MemoryDetailPanel:** Panel de monitoreo de RAM con top 10 procesos al hacer clic en el indicador de memoria de la barra.
 * **Notificaciones agrupadas estilo macOS:** Agrupación inteligente por app+tipo con badge numérico (+N más). Click en notificación enfoca/abre la app destino.
 * **Launcher Moderno (`Ctrl + Space` o `Super + d`):** Reemplazo directo de `Wofi` con una cuadrícula de iconos elegante y responsiva.
-* **Power Menu QML:** Menú de apagado y reinicio a medida para Sway, reemplazando Wlogout.
+* **Power Menu QML:** Menú de apagado y reinicio a medida para Niri, integrado mediante IPC.
 
 ### Instalador Inteligente (`installer.sh`)
-* **Gestor de Dependencias Autónomo:** Listas de paquetes unificadas y probadas tanto para **Fedora** (dnf) como para **Debian/Ubuntu** (apt).
+* **Gestor de Dependencias Autónomo:** Listas de paquetes unificadas y probadas tanto para **Debian/Ubuntu** (apt) como para Fedora (dnf) y Arch Linux (pacman).
+* **Compilación Integrada en Debian:** Clona, compila e instala la última versión estable de **Niri**, **xwayland-satellite** (para dar soporte a aplicaciones X11 como Steam y Discord) y **Quickshell** automáticamente desde su código fuente.
 * **Gestor de Archivos Flexible:** El instalador pregunta de forma interactiva qué explorador de archivos deseas usar (Dolphin, Nautilus, Thunar, PCManFM, Nemo) y configura tu atajo `Super + e` automáticamente.
-* **Payload Auto-Contenido:** Todos los archivos de configuración (`mysway-configs.tar.gz`) están empaquetados en codificación Base64 dentro del mismo instalador. Con ejecutar un archivo, tienes todo el sistema listo.
+* **Payload Auto-Contenido:** Todos los archivos de configuración (`myniri-configs.tar.gz`) están empaquetados en codificación Base64 dentro del mismo instalador. Con ejecutar un archivo, tienes todo el sistema listo.
 
 ## Atajos de Teclado Destacados
 
@@ -43,12 +44,25 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
 | :--- | :--- |
 | `Super + d` o `Ctrl + Space` | Abrir lanzador de aplicaciones (QML) |
 | `Super + i` | Abrir configuración del sistema (Settings App) |
-| `Super + t` | Abrir terminal (`kitty`) |
+| `Super + t` o `Super + Return` | Abrir terminal (`kitty`) |
 | `Super + e` | Abrir tu Gestor de Archivos seleccionado |
-| `Super + Shift + c` | Recargar Sway |
+| `Super + Shift + c` | Recargar la configuración de Niri |
 | `Super + z` | Abrir navegador Zen |
-| Clic en memoria (TopBar) | Abrir panel de top 10 procesos RAM |
-| Rueda del ratón en TopBar | Navegar entre workspaces |
+| `Super + H` / `Left` | Enfocar columna a la izquierda |
+| `Super + L` / `Right` | Enfocar columna a la derecha |
+| `Super + K` / `Up` | Enfocar ventana arriba |
+| `Super + J` / `Down` | Enfocar ventana abajo |
+| `Super + Shift + H` / `Left` | Mover columna a la izquierda |
+| `Super + Shift + L` / `Right` | Mover columna a la derecha |
+| `Super + Shift + K` / `Up` | Mover ventana arriba (o a workspace arriba) |
+| `Super + Shift + J` / `Down` | Mover ventana abajo (o a workspace abajo) |
+| `Super + 1-10` | Cambiar al workspace 1-10 |
+| `Super + Shift + 1-10` | Mover columna activa al workspace 1-10 |
+| `Super + Ctrl + Right / Left` | Navegar al workspace siguiente / anterior |
+| `Super + F` | Maximizar columna activa |
+| `Super + Shift + Space` o `F` | Cambiar ventana activa a flotante |
+| `Super + Shift + Return` | Abrir terminal flotante |
+| `Clic en memoria (TopBar)` | Abrir panel de top 10 procesos RAM |
 
 ## Instalación
 
@@ -62,7 +76,7 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
    ./installer.sh
    ```
 4. Elige tu gestor de archivos cuando el instalador lo pregunte.
-5. Disfruta de tu nuevo entorno.
+5. Una vez completado, cierra sesión e inicia en tu nuevo entorno seleccionando **Niri** en tu pantalla de login.
 
 ---
 *Creado y mantenido por Ismael.*
