@@ -1,0 +1,11 @@
+# Entorno y artefactos de python
+__pycache__/
+*.pyc
+
+# Archivos temporales de configuración (empaquetados en installer)
+mysway-configs.tar.gz
+mysway-configs.tar.gz.b64
+
+# Notas y TODOs locales
+To-Do/
+*.bak
