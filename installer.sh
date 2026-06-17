@@ -185,6 +185,7 @@ install_deps() {
                 tmp_file=$(mktemp)
                 if wget -q -O "$tmp_file" "https://raw.githubusercontent.com/niri-wm/niri/main/resources/$file"; then
                     sudo cp "$tmp_file" "$systemd_user_dir/$file"
+                    sudo chmod 644 "$systemd_user_dir/$file"
                     ok "$file instalado correctamente"
                 else
                     warn "No se pudo descargar $file"
@@ -198,6 +199,7 @@ install_deps() {
             tmp_file=$(mktemp)
             if wget -q -O "$tmp_file" "https://raw.githubusercontent.com/niri-wm/niri/main/resources/niri-portals.conf"; then
                 sudo cp "$tmp_file" "$portal_dir/niri-portals.conf"
+                sudo chmod 644 "$portal_dir/niri-portals.conf"
                 ok "niri-portals.conf instalado correctamente"
             else
                 warn "No se pudo descargar niri-portals.conf"
@@ -330,6 +332,28 @@ extract_payload() {
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
         export PATH="$HOME/.local/bin:$PATH"
+    fi
+
+    # Crear env.sh con variables de entorno Qt/GTK si no existe
+    if [[ ! -f "$HOME/.config/niri/env.sh" ]]; then
+        mkdir -p "$HOME/.config/niri"
+        cat > "$HOME/.config/niri/env.sh" <<'ENVEOF'
+export QT_QPA_PLATFORMTHEME=qt5ct
+export QT_STYLE_OVERRIDE=Breeze
+export GTK_THEME=Breeze-Dark
+export XCURSOR_THEME=breeze_cursors
+export XCURSOR_SIZE=24
+export GDK_DPI_SCALE=1
+export QT_FONT_DPI=96
+export KDED_FIRST_STARTUP=1
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+export QT_ENABLE_HIGHDPI_SCALING=0
+export ELECTRON_USE_WAYLAND=1
+export EDITOR=nano
+export BROWSER=/opt/zen/zen
+export TERMINAL=kitty
+ENVEOF
+        ok "env.sh creado en ~/.config/niri/env.sh"
     fi
 
     rm -rf "$tmpdir"
