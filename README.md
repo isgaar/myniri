@@ -1,6 +1,6 @@
 <div align="center">
   <h1>MyNiri Environment v4.0</h1>
-  <p><strong>Un entorno premium para Linux construido con Niri, Waybar y Quickshell.</strong></p>
+  <p><strong>Un entorno premium para Linux construido con Niri y Quickshell.</strong></p>
 
   ![Fedora](https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white)
   ![Debian](https://img.shields.io/badge/Debian-A81D33?style=for-the-badge&logo=debian&logoColor=white)
@@ -20,7 +20,9 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
 
 ### Diseño Unificado y Elegante
 * **Quickshell como Motor Principal:** Paneles de volumen, brillo, calendario, menú de apagado, notificaciones y configuración de sistema unificados mediante una sola fuente de verdad (`theme.json`).
-* **TopBar QML nativa:** Barra superior con iconos animados (batería con fill por nivel y color, memoria con círculo Canvas de progreso, volumen con barra horizontal 300ms OutCubic, mic con transiciones de color 200ms).
+* **TopBar QML nativa:** Barra superior con iconos animados (batería con fill por nivel y color, memoria con círculo Canvas de progreso, volumen con barra horizontal 300ms OutCubic, mic con transiciones de color 200ms) y visualización minimalista de workspaces agrupados por monitor sin etiquetas de texto.
+* **Arranque instantáneo y optimizado:** Eliminación de retrasos de 25s al arrancar aplicaciones mediante el enmascaramiento automático de `at-spi-dbus-bus.service` y propagación de `NO_AT_BRIDGE=1`.
+* **Tematización oscura unificada:** Integración perfecta con el tema oscuro de KDE/Dolphin para todas las aplicaciones Qt5/Qt6 y diálogos nativos mediante `QT_QPA_PLATFORMTHEME=kde` y mejoras en el wrapper `honey`.
 * **Soporte Nativo de Modo Oscuro/Claro:** Transiciones dinámicas de colores y contraste inteligente en barras y menús.
 * **Geometría Premium (Honey):** Bordes perfectamente redondeados en todas las esquinas y notificaciones sincronizadas dinámicamente con el tema de la shell.
 * **Componentes Exclusivos:** Sliders en forma de píldora interactiva sin perillas para control de música, brillo y audio.
