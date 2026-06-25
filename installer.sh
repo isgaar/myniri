@@ -31,6 +31,7 @@ readonly PAYLOAD_MARKER="__NIRI_PAYLOAD__"
 readonly -a DNF_PKGS=(
     niri swaybg swayidle swaylock kitty waybar mako wmenu wlogout
     brightnessctl grim slurp wl-clipboard jq libnotify dbus-tools
+    xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulseaudio wireplumber NetworkManager network-manager-applet bluez bluez-tools rfkill
     xdg-utils polkit-kde fontawesome-fonts rsms-inter-fonts jetbrains-mono-fonts psmisc
     python3 python3-pillow python3-gobject polkit-gir
@@ -40,6 +41,7 @@ readonly -a DNF_PKGS=(
 readonly -a APT_PKGS=(
     swaybg swayidle swaylock kitty waybar mako-notifier wmenu wlogout
     brightnessctl grim slurp wl-clipboard jq libnotify-bin dbus
+    xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulse wireplumber network-manager network-manager-gnome bluez rfkill
     xdg-utils polkitd fonts-font-awesome fonts-inter fonts-jetbrains-mono psmisc
     python3 python3-pil python3-gi gir1.2-polkit-1.0
@@ -66,6 +68,7 @@ readonly -a APT_BUILD_DEPS=(
 readonly -a ARCH_PKGS=(
     niri swaybg swayidle swaylock kitty waybar mako wmenu wlogout
     brightnessctl grim slurp wl-clipboard jq libnotify dbus
+    xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulse wireplumber networkmanager network-manager-applet bluez bluez-utils rfkill
     xdg-utils polkit psmisc python python-pillow python-gobject gobject-introspection
     ttf-font-awesome ttf-inter ttf-jetbrains-mono noto-fonts-emoji noto-fonts-cjk noto-fonts fastfetch
@@ -425,7 +428,6 @@ configure_environment() {
 export XDG_CURRENT_DESKTOP=niri
 export XDG_SESSION_DESKTOP=niri
 export QT_QPA_PLATFORM="wayland;xcb"
-export GDK_BACKEND="wayland,x11"
 export MOZ_ENABLE_WAYLAND=1
 export FREETYPE_PROPERTIES="cff:no-stem-darkening=0 autofitter:no-stem-darkening=0"
 export PATH="${HOME}/.local/bin:${PATH}"
@@ -444,6 +446,10 @@ ENV_EOF
         sudo chmod +x "$session_file"
         rm -f "$tmp_session"
         ok "Variables locales de entorno inyectadas en niri-session"
+
+        # GDK_BACKEND rompe xdg-desktop-portal-gnome en Niri: deja el portal
+        # sin ScreenCast y bloquea compartir pantalla en navegadores.
+        systemctl --user unset-environment GDK_BACKEND 2>/dev/null || true
     else
         warn "No se encontró $session_file para inyectar las variables de entorno"
     fi
@@ -495,7 +501,6 @@ HONEY_LIB_DIR="$HOME/.config/honey/lib"
 if [ -d "$HONEY_LIB_DIR" ]; then
     export LD_LIBRARY_PATH="$HONEY_LIB_DIR:$LD_LIBRARY_PATH"
 fi
-export GDK_BACKEND=wayland,x11
 export QT_QPA_PLATFORM="wayland;xcb"
 exec "$@"
 EOF
