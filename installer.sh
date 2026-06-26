@@ -30,6 +30,7 @@ readonly PAYLOAD_MARKER="__NIRI_PAYLOAD__"
 # ── Paquetes ──────────────────────────────────────────────────
 readonly -a DNF_PKGS=(
     niri swaybg swayidle swaylock kitty waybar mako wmenu wlogout
+    xsettingsd kate gwenview ark okular
     brightnessctl grim slurp wl-clipboard jq libnotify dbus-tools
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulseaudio wireplumber NetworkManager network-manager-applet bluez bluez-tools rfkill
@@ -40,6 +41,7 @@ readonly -a DNF_PKGS=(
 
 readonly -a APT_PKGS=(
     swaybg swayidle swaylock kitty waybar mako-notifier wmenu wlogout
+    xsettingsd kate gwenview ark okular
     brightnessctl grim slurp wl-clipboard jq libnotify-bin dbus
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulse wireplumber network-manager network-manager-gnome bluez rfkill
@@ -67,6 +69,7 @@ readonly -a APT_BUILD_DEPS=(
 
 readonly -a ARCH_PKGS=(
     niri swaybg swayidle swaylock kitty waybar mako wmenu wlogout
+    xsettingsd kate gwenview ark okular
     brightnessctl grim slurp wl-clipboard jq libnotify dbus
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulse wireplumber networkmanager network-manager-applet bluez bluez-utils rfkill
@@ -293,6 +296,15 @@ backup_existing() {
         "$HOME/.config/mako" \
         "$HOME/.config/quickshell" \
         "$HOME/.config/fastfetch" \
+        "$HOME/.config/niri-autotiler" \
+        "$HOME/.config/systemd/user/niri-autotiler.service" \
+        "$HOME/.config/systemd/user/quickshell-polkit-agent.service" \
+        "$HOME/.config/mimeapps.list" \
+        "$HOME/.local/share/applications/mimeapps.list" \
+        "$HOME/.config/kdeglobals" \
+        "$HOME/.config/gtk-3.0/settings.ini" \
+        "$HOME/.config/gtk-4.0/settings.ini" \
+        "$HOME/.config/xsettingsd" \
         "$HOME/.config/fontconfig/conf.d/99-honey-render.conf" \
         "$HOME/.local/bin/honey" \
         "$HOME/scripts"; do
@@ -574,6 +586,492 @@ configure_audio() {
     ok "Servicios de PipeWire habilitados"
 }
 
+configure_honey_current_runtime() {
+    echo "Aplicando runtime Honey actual: macOS-like, grayscale y entorno KDE correcto..."
+
+    mkdir -p \
+        "$HOME/.config/niri" \
+        "$HOME/.config/fontconfig/conf.d" \
+        "$HOME/.config/gtk-3.0" \
+        "$HOME/.config/gtk-4.0" \
+        "$HOME/.config/xsettingsd" \
+        "$HOME/.local/bin"
+
+    cat > "$HOME/.config/niri/env.sh" <<'ENVEOF'
+export QT_QPA_PLATFORMTHEME=kde
+export QT_STYLE_OVERRIDE=Breeze
+export KDE_COLOR_SCHEME="Moonfly Dark"
+export GTK_THEME=Breeze-Dark
+export XCURSOR_THEME=breeze_cursors
+export XCURSOR_SIZE=24
+export FREETYPE_PROPERTIES="cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 truetype:interpreter-version=40 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0"
+
+# Evitar doble escalado en Wayland: Niri escala la UI.
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+export QT_ENABLE_HIGHDPI_SCALING=0
+unset GDK_SCALE
+unset QT_SCALE_FACTOR
+unset QT_WAYLAND_DECORATION
+
+export QT_FONT_DPI=96
+export GDK_DPI_SCALE=1
+
+HONEY_LIB_DIR="$HOME/.config/honey/lib"
+if [ -d "$HONEY_LIB_DIR" ]; then
+    export LD_LIBRARY_PATH="$HONEY_LIB_DIR:$LD_LIBRARY_PATH"
+fi
+
+export ELECTRON_USE_WAYLAND=1
+export EDITOR=nano
+export BROWSER=/opt/zen/zen
+export TERMINAL=kitty
+export NO_AT_BRIDGE=1
+export XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config"
+export XDG_MENU_PREFIX=plasma-
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
+
+export QT_QPA_PLATFORM=wayland-egl
+export QML_FORCE_DISK_CACHE=1
+ENVEOF
+
+    cat > "$HOME/.local/bin/honey" <<'EOF'
+#!/usr/bin/env bash
+if [ -f "$HOME/.config/niri/env.sh" ]; then
+    source "$HOME/.config/niri/env.sh"
+fi
+export XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config"
+export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
+export HONEY_RENDER=1
+export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 truetype:interpreter-version=40 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
+export QT_QPA_PLATFORM="wayland;xcb"
+unset QT_WAYLAND_DECORATION
+exec "$@"
+EOF
+    chmod +x "$HOME/.local/bin/honey"
+
+    cat > "$HOME/.config/fontconfig/fonts.conf" <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir prefix="xdg">fonts</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+</fontconfig>
+EOF
+
+    cat > "$HOME/.config/fontconfig/conf.d/99-honey-render.conf" <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <!-- Honey: fidelidad de forma tipo macOS. Grayscale AA, sin RGB/subpixel. -->
+  <match target="font">
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+    <edit name="hinting" mode="assign"><bool>false</bool></edit>
+    <edit name="autohint" mode="assign"><bool>false</bool></edit>
+    <edit name="hintstyle" mode="assign"><const>hintnone</const></edit>
+    <edit name="rgba" mode="assign"><const>none</const></edit>
+    <edit name="lcdfilter" mode="assign"><const>lcdnone</const></edit>
+    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
+    <edit name="scalable" mode="assign"><bool>true</bool></edit>
+  </match>
+
+  <match target="pattern">
+    <edit name="dpi" mode="assign"><double>96</double></edit>
+  </match>
+
+  <!-- Respetar pesos reales. No convertir Regular en Medium. -->
+  <match target="pattern">
+    <test name="family" compare="eq"><string>system-ui</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>ui-sans-serif</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>-apple-system</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>BlinkMacSystemFont</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>Arial</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>Helvetica</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>Roboto</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>sans-serif</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family" compare="eq"><string>Inter</string></test>
+    <edit name="family" mode="append" binding="strong">
+      <string>Noto Sans CJK SC</string>
+      <string>Noto Sans CJK TC</string>
+      <string>Noto Sans CJK JP</string>
+      <string>Noto Color Emoji</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family" compare="eq"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>JetBrains Mono</string></edit>
+  </match>
+</fontconfig>
+EOF
+
+    cat > "$HOME/.config/fontconfig/conf.d/99-grayscale.conf" <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <!-- Deliberadamente vacío: 99-honey-render.conf fuerza escala de grises. -->
+</fontconfig>
+EOF
+
+    for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
+        local gtk_file="$gtk_dir/settings.ini"
+        touch "$gtk_file"
+        grep -q '^\[Settings\]' "$gtk_file" || sed -i '1i[Settings]' "$gtk_file"
+        _set_ini_key "$gtk_file" "gtk-application-prefer-dark-theme" "true"
+        _set_ini_key "$gtk_file" "gtk-decoration-layout" ":maximize,close"
+        _set_ini_key "$gtk_file" "gtk-enable-animations" "true"
+        _set_ini_key "$gtk_file" "gtk-font-name" "Inter,  11"
+        _set_ini_key "$gtk_file" "gtk-icon-theme-name" "breeze-dark"
+        _set_ini_key "$gtk_file" "gtk-theme-name" "Breeze-Dark"
+        _set_ini_key "$gtk_file" "gtk-xft-antialias" "1"
+        _set_ini_key "$gtk_file" "gtk-xft-dpi" "98304"
+        _set_ini_key "$gtk_file" "gtk-xft-hinting" "0"
+        _set_ini_key "$gtk_file" "gtk-xft-hintstyle" "hintnone"
+        _set_ini_key "$gtk_file" "gtk-xft-rgba" "none"
+    done
+
+    for kde_file in "$HOME/.config/kdeglobals" "$HOME/.config/niri/xdg-config/kdeglobals"; do
+        mkdir -p "$(dirname "$kde_file")"
+        touch "$kde_file"
+        grep -q '^\[General\]' "$kde_file" || printf '\n[General]\n' >> "$kde_file"
+        _set_ini_key "$kde_file" "XftAntialias" "true"
+        _set_ini_key "$kde_file" "XftHintStyle" "hintnone"
+        _set_ini_key "$kde_file" "XftSubPixel" "none"
+    done
+
+    cat > "$HOME/.config/xsettingsd/xsettingsd.conf" <<'EOF'
+Gdk/UnscaledDPI 98304
+Gdk/WindowScalingFactor 1
+Xft/Antialias 1
+Xft/DPI 98304
+Xft/Hinting 0
+Xft/HintStyle "hintnone"
+Xft/RGBA "none"
+Gtk/EnableAnimations 1
+Gtk/DecorationLayout ":maximize,close"
+Net/ThemeName "Breeze-Dark"
+Gtk/PrimaryButtonWarpsSlider 1
+Gtk/ToolbarStyle 3
+Gtk/MenuImages 1
+Gtk/ButtonImages 1
+Gtk/CursorThemeSize 24
+Gtk/CursorThemeName "breeze_cursors"
+Net/SoundThemeName "ocean"
+Net/IconThemeName "breeze-dark"
+Gtk/FontName "Inter,  11"
+EOF
+
+    mkdir -p "$HOME/.config/niri/xdg-config"
+    ln -sfn "$HOME/.config/fontconfig" "$HOME/.config/niri/xdg-config/fontconfig"
+    ln -sfn "$HOME/.config/xsettingsd" "$HOME/.config/niri/xdg-config/xsettingsd"
+
+    fc-cache -r "$HOME/.local/share/fonts" "$HOME/.fonts" 2>/dev/null || fc-cache -r || true
+    gsettings set org.gnome.desktop.interface font-antialiasing 'grayscale' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface font-hinting 'none' 2>/dev/null || true
+
+    for conf in chromium chrome electron brave brave-browser; do
+        cat > "$HOME/.config/${conf}-flags.conf" <<'EOF'
+--disable-lcd-text
+--font-render-hinting=none
+EOF
+    done
+
+    ok "Honey runtime actualizado"
+}
+
+_set_ini_key() {
+    local file="$1" key="$2" value="$3"
+    if grep -q "^${key}=" "$file"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$file"
+    fi
+}
+
+configure_mimeapps_current() {
+    echo "Configurando asociaciones MIME para KDE/Dolphin y Honey..."
+    mkdir -p "$HOME/.config" "$HOME/.local/share/applications" "$HOME/.config/niri/xdg-config"
+
+    local mime_file
+    for mime_file in "$HOME/.config/mimeapps.list" "$HOME/.local/share/applications/mimeapps.list"; do
+        cat > "$mime_file" <<'EOF'
+[Default Applications]
+inode/directory=org.kde.dolphin.desktop
+text/plain=org.kde.kate.desktop
+text/markdown=org.kde.kate.desktop
+application/pdf=okularApplication_pdf.desktop
+image/png=org.kde.gwenview.desktop
+image/jpeg=org.kde.gwenview.desktop
+image/webp=org.kde.gwenview.desktop
+image/x-webp=org.kde.gwenview.desktop
+image/svg+xml=org.kde.gwenview.desktop
+application/zip=org.kde.ark.desktop
+application/vnd.rar=org.kde.ark.desktop
+application/x-7z-compressed=org.kde.ark.desktop
+application/x-tar=org.kde.ark.desktop
+application/x-compressed-tar=org.kde.ark.desktop
+application/x-xz-compressed-tar=org.kde.ark.desktop
+application/vnd.debian.binary-package=org.kde.discover.desktop
+application/x-deb=org.kde.discover.desktop
+x-scheme-handler/http=brave-browser.desktop
+x-scheme-handler/https=brave-browser.desktop
+text/html=brave-browser.desktop
+x-scheme-handler/tg=org.telegram.desktop._bfc6f198a3be7b44c434b50362bebae3.desktop
+x-scheme-handler/tonsite=org.telegram.desktop._bfc6f198a3be7b44c434b50362bebae3.desktop
+
+[Added Associations]
+inode/directory=org.kde.dolphin.desktop;org.kde.gwenview.desktop;codium.desktop;
+text/plain=org.kde.kate.desktop;org.kde.kwrite.desktop;codium.desktop;vim.desktop;
+text/markdown=org.kde.kate.desktop;org.kde.kwrite.desktop;codium.desktop;vim.desktop;
+application/pdf=okularApplication_pdf.desktop;
+image/png=org.kde.gwenview.desktop;gimp.desktop;
+image/jpeg=org.kde.gwenview.desktop;gimp.desktop;
+image/webp=org.kde.gwenview.desktop;gimp.desktop;
+image/x-webp=org.kde.gwenview.desktop;gimp.desktop;
+image/svg+xml=org.kde.gwenview.desktop;gimp.desktop;
+application/zip=org.kde.ark.desktop;
+application/vnd.rar=org.kde.ark.desktop;
+application/x-7z-compressed=org.kde.ark.desktop;
+application/x-tar=org.kde.ark.desktop;
+application/x-compressed-tar=org.kde.ark.desktop;
+application/x-xz-compressed-tar=org.kde.ark.desktop;
+application/vnd.debian.binary-package=org.kde.discover.desktop;org.kde.ark.desktop;
+application/x-deb=org.kde.discover.desktop;org.kde.ark.desktop;
+x-scheme-handler/http=brave-browser.desktop;brave-origin.desktop;
+x-scheme-handler/https=brave-browser.desktop;brave-origin.desktop;
+text/html=brave-browser.desktop;brave-origin.desktop;
+x-scheme-handler/tg=org.telegram.desktop._bfc6f198a3be7b44c434b50362bebae3.desktop;
+x-scheme-handler/tonsite=org.telegram.desktop._bfc6f198a3be7b44c434b50362bebae3.desktop;
+EOF
+    done
+
+    ln -sfn "$HOME/.config/mimeapps.list" "$HOME/.config/niri/xdg-config/mimeapps.list"
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+    XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config" XDG_CURRENT_DESKTOP=niri XDG_MENU_PREFIX=plasma- \
+        kbuildsycoca6 --noincremental 2>/dev/null || true
+    ok "Asociaciones MIME configuradas"
+}
+
+configure_autotiler_and_polkit() {
+    echo "Configurando autotiler de Niri y agente Polkit de Quickshell..."
+    mkdir -p "$HOME/.config/systemd/user" "$HOME/.config/niri/xdg-config/systemd/user" "$HOME/.config/niri-autotiler"
+
+    if [[ -f "$HOME/scripts/niri_autotiler.py" ]]; then
+        chmod +x "$HOME/scripts/niri_autotiler.py"
+    else
+        warn "No existe ~/scripts/niri_autotiler.py en el payload; el servicio se creará pero no podrá iniciar."
+    fi
+
+    if [[ -f "$HOME/scripts/polkit_agent.py" ]]; then
+        chmod +x "$HOME/scripts/polkit_agent.py"
+    else
+        warn "No existe ~/scripts/polkit_agent.py en el payload; el servicio se creará pero no podrá iniciar."
+    fi
+
+    cat > "$HOME/.config/niri-autotiler/config.toml" <<'EOF'
+# Configuración de Niri Autotiler
+enabled = true
+stack_mode = "master_stack"
+master_ratio = 60
+debounce_ms = 150
+ratio_tolerance = 2.0
+followup_retile_ms = 120
+structural_action_cooldown_ms = 500
+excluded_app_ids = [
+    "kdialog",
+    "org.kde.kdialog",
+    "floating_kitty",
+    "zenity"
+]
+excluded_app_id_prefixes = [
+    "quickshell"
+]
+outputs = []
+EOF
+
+    cat > "$HOME/.config/systemd/user/niri-autotiler.service" <<EOF
+[Unit]
+Description=Niri autotiler daemon
+After=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+ExecStart=/usr/bin/python3 $HOME/scripts/niri_autotiler.py
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+
+    cat > "$HOME/.config/systemd/user/quickshell-polkit-agent.service" <<EOF
+[Unit]
+Description=Quickshell PolicyKit authentication agent
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 $HOME/scripts/polkit_agent.py
+Restart=on-failure
+RestartSec=2
+Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=XDG_CONFIG_HOME=$HOME/.config/niri/xdg-config
+
+[Install]
+WantedBy=default.target
+EOF
+
+    cp "$HOME/.config/systemd/user/niri-autotiler.service" "$HOME/.config/niri/xdg-config/systemd/user/niri-autotiler.service"
+    cp "$HOME/.config/systemd/user/quickshell-polkit-agent.service" "$HOME/.config/niri/xdg-config/systemd/user/quickshell-polkit-agent.service"
+    ln -sfn "$HOME/.config/niri-autotiler" "$HOME/.config/niri/xdg-config/niri-autotiler"
+
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user enable niri-autotiler.service quickshell-polkit-agent.service 2>/dev/null || true
+    systemctl --user restart quickshell-polkit-agent.service 2>/dev/null || true
+
+    if [[ -n "${NIRI_SOCKET:-}" ]]; then
+        systemctl --user restart niri-autotiler.service 2>/dev/null || true
+    fi
+
+    ok "Autotiler y Polkit configurados"
+}
+
+configure_resource_saving_services() {
+    _cmd_exists systemctl || return 0
+    echo "Aplicando optimizaciones de memoria de arranque..."
+
+    mkdir -p "$HOME/.config/autostart"
+    local desktop
+    for desktop in \
+        nm-applet.desktop \
+        baloo_file.desktop \
+        org.kde.kdeconnect.daemon.desktop \
+        org.kde.xwaylandvideobridge.desktop; do
+        if [[ -f "$HOME/.config/autostart/$desktop" ]]; then
+            grep -q '^Hidden=true' "$HOME/.config/autostart/$desktop" || printf '\nHidden=true\n' >> "$HOME/.config/autostart/$desktop"
+        fi
+    done
+
+    systemctl --user mask \
+        mako.service \
+        kde-baloo.service \
+        plasma-plasmashell.service \
+        plasma-ksmserver.service \
+        plasma-kcminit.service \
+        obex.service \
+        drkonqi-coredump-pickup.service \
+        drkonqi-coredump-cleanup.service \
+        drkonqi-coredump-cleanup.timer \
+        drkonqi-sentry-postman.timer \
+        drkonqi-sentry-postman.path 2>/dev/null || true
+
+    ok "Servicios no esenciales enmascarados"
+}
+
+configure_niri_runtime_config() {
+    local config="$HOME/.config/niri/config.kdl"
+    [[ -f "$config" ]] || return 0
+
+    echo "Ajustando config.kdl para Honey, MIME/KDE, Polkit y autotiler..."
+    python3 - "$config" "$SELECTED_FM" "$HOME" <<'PY'
+import re
+import sys
+
+path, selected_fm, home = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, "r", encoding="utf-8") as f:
+    content = f.read()
+
+env_line = (
+    'spawn-sh-at-startup "source ~/.config/niri/env.sh && '
+    'systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP DISPLAY NO_AT_BRIDGE NIRI_SOCKET '
+    'XDG_CONFIG_HOME XDG_MENU_PREFIX XDG_DATA_DIRS XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS '
+    'QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM GTK_THEME XCURSOR_THEME XCURSOR_SIZE '
+    'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP QML_FORCE_DISK_CACHE && '
+    'hash dbus-update-activation-environment 2>/dev/null && '
+    'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri DISPLAY NO_AT_BRIDGE '
+    'QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM GTK_THEME XCURSOR_THEME XCURSOR_SIZE '
+    'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP XDG_CONFIG_HOME XDG_MENU_PREFIX XDG_DATA_DIRS '
+    'XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS QML_FORCE_DISK_CACHE"'
+)
+
+if re.search(r'^spawn-sh-at-startup "source ~/.config/niri/env\.sh && systemctl --user import-environment .*$',
+             content, flags=re.MULTILINE):
+    content = re.sub(
+        r'^spawn-sh-at-startup "source ~/.config/niri/env\.sh && systemctl --user import-environment .*$',
+        env_line,
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+else:
+    content = env_line + "\n" + content
+
+def add_after_marker(text, marker, line):
+    if line in text:
+        return text
+    idx = text.find(marker)
+    if idx == -1:
+        return text + "\n" + line + "\n"
+    insert_at = text.find("\n", idx)
+    if insert_at == -1:
+        return text + "\n" + line + "\n"
+    return text[:insert_at + 1] + line + "\n" + text[insert_at + 1:]
+
+content = add_after_marker(
+    content,
+    "// Gestor de configuraciones X11",
+    'spawn-at-startup "xsettingsd"',
+)
+content = add_after_marker(
+    content,
+    "// Agente Polkit",
+    'spawn-at-startup "systemctl" "--user" "restart" "quickshell-polkit-agent.service"',
+)
+
+fm_line = f'    Mod+E {{ spawn "honey" "{selected_fm}" "{home}"; }} // El instalador cambiará esto al FileManager elegido'
+content = re.sub(
+    r'^\s*Mod\+E\s*\{\s*spawn\s+"honey"\s+"[^"]+"(?:\s+"[^"]+")*\s*;\s*\}.*$',
+    fm_line,
+    content,
+    count=1,
+    flags=re.MULTILINE,
+)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+PY
+
+    niri validate -c "$config" 2>/dev/null || warn "config.kdl no pudo validarse en este entorno; revisa con: niri validate -c ~/.config/niri/config.kdl"
+    ok "config.kdl ajustado"
+}
+
 post_checks() {
     echo ""
     echo "Resumen de comandos importantes (Niri):"
@@ -656,6 +1154,11 @@ main() {
     configure_environment
     configure_fonts
     configure_honey_core
+    configure_honey_current_runtime
+    configure_mimeapps_current
+    configure_autotiler_and_polkit
+    configure_niri_runtime_config
+    configure_resource_saving_services
     configure_audio
     post_checks
 }
