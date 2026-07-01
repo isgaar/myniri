@@ -20,7 +20,8 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
 
 ### Diseño Unificado y Elegante
 * **Quickshell como Motor Principal:** Paneles de volumen, brillo, calendario, menú de apagado, notificaciones y configuración de sistema unificados mediante una sola fuente de verdad (`theme.json`).
-* **TopBar QML nativa:** Barra superior con iconos animados (batería con fill por nivel y color, memoria con círculo Canvas de progreso, volumen con barra horizontal 300ms OutCubic, mic con transiciones de color 200ms) y visualización minimalista de workspaces agrupados por monitor sin etiquetas de texto.
+* **TopBar QML nativa:** Barra superior con iconos animados (batería con fill por nivel y color, memoria con círculo Canvas de progreso, volumen con barra horizontal 300ms OutCubic, mic con transiciones de color 200ms), diseño Cupertino opcional y visualización minimalista de workspaces agrupados por monitor.
+* **Color de Wallpaper Event-Driven:** Al cambiar el fondo, se calcula una sola vez el acento y la luminancia izquierda/derecha, se guarda en `theme.json` y la topbar lo reutiliza sin procesos de análisis permanentes.
 * **Arranque instantáneo y optimizado:** Eliminación de retrasos de 25s al arrancar aplicaciones mediante el enmascaramiento automático de `at-spi-dbus-bus.service` y propagación de `NO_AT_BRIDGE=1`.
 * **Tematización oscura unificada:** Integración perfecta con el tema oscuro de KDE/Dolphin para todas las aplicaciones Qt5/Qt6 y diálogos nativos mediante `QT_QPA_PLATFORMTHEME=kde` y mejoras en el wrapper `honey`.
 * **Soporte Nativo de Modo Oscuro/Claro:** Transiciones dinámicas de colores y contraste inteligente en barras y menús.
@@ -28,6 +29,7 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
 * **Componentes Exclusivos:** Sliders en forma de píldora interactiva sin perillas para control de música, brillo y audio.
 
 ### Aplicaciones Integradas
+* **Niri Autotiler:** Servicio de autotiling con guard rails porcentuales para evitar columnas angostas con una sola ventana, compatible con pantallas 4:3, 16:10, 16:9 y ultrawide.
 * **Settings App (`Super + i`):** Aplicación completa de ajustes en QML con páginas de Conexiones (Wi-Fi/Ethernet/Bluetooth embebidos sin KDE), Audio (selector de sinks con iconos por tipo), Información del Sistema dinámica, y Personalización (colores, animaciones, esquinas, blur y gaps).
 * **MemoryDetailPanel:** Panel de monitoreo de RAM con top 10 procesos al hacer clic en el indicador de memoria de la barra.
 * **Notificaciones agrupadas estilo macOS:** Agrupación inteligente por app+tipo con badge numérico (+N más). Click en notificación enfoca/abre la app destino.
