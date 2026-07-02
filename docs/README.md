@@ -1,11 +1,11 @@
-# Documentación de mysway
+# Documentación de MyNiri
 
-Este repositorio contiene la configuración unificada para el entorno de escritorio Sway con un diseño moderno (estilo Honey), potenciado por Quickshell, Waybar, Mako y Wireplumber.
+Este repositorio contiene la configuración unificada para el entorno de escritorio Niri con un diseño moderno estilo Honey, potenciado por Quickshell, Mako y WirePlumber.
 
 ## Arquitectura del Sistema
 
-### 1. Sway (Gestor de Ventanas)
-Sway es la pieza central que gestiona las ventanas en Wayland. La configuración (`~/.config/sway/config`) se encarga de:
+### 1. Niri (Gestor de Ventanas)
+Niri es la pieza central que gestiona las ventanas en Wayland. La configuración (`~/.config/niri/config.kdl`) se encarga de:
 - Inicializar el entorno, definir atajos de teclado e integrar utilidades como `polkit_agent.py`.
 - Integración perfecta con `quickshell` para invocar lanzadores (ej: Ctrl+Space para el AppLauncher QML).
 - Configurar reglas de renderizado flotante, de colores (extraídos mediante el script de acento), y de comportamiento de ventanas.
@@ -18,8 +18,8 @@ Quickshell se usa para construir la UI premium interactiva, reemplazando herrami
 
 ### 3. Scripts (`~/scripts/`)
 Los scripts en Python y Bash funcionan como intermediarios entre el sistema y la UI.
-- `audio_monitor.py`: Escucha eventos de PulseAudio (vía `pactl`) y Wireplumber de manera continua. Actualiza la barra superior inmediatamente cuando hay un cambio en el nivel de volumen o en el estado de silencio.
-- `extract_color.py`: Analiza el fondo de pantalla actual y extrae una paleta de colores usando Pillow para inyectarla en Waybar y Quickshell.
+- `honey_network_status.sh`: Entrega a la TopBar el estado de Ethernet/Wi-Fi en formato TSV (`tipo`, `nombre`, `señal`, `IP`, `velocidad`). Siempre devuelve una línea válida, incluso sin conexión.
+- `extract_color.py`: Analiza el fondo de pantalla actual y extrae una paleta de colores usando Pillow para inyectarla en Quickshell.
 - `polkit_agent.py`: Proveedor de autenticación gráfica para acciones del sistema que requieren permisos.
 - Diferentes scripts bash para toggles (wifi, bluetooth, paneles y calendarios).
 
