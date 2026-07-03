@@ -562,7 +562,12 @@ EOF
 
     # Chromium-based apps
     for conf in chromium chrome electron brave brave-browser; do
-        echo "--disable-lcd-text" > "$HOME/.config/${conf}-flags.conf"
+        cat > "$HOME/.config/${conf}-flags.conf" <<'EOF'
+--disable-lcd-text
+--font-render-hinting=none
+--ozone-platform-hint=auto
+--enable-features=WebRTCPipeWireCapturer
+EOF
     done
     ok "Configuración de fontconfig estilo Honey aplicada"
 }
@@ -663,16 +668,19 @@ configure_xdg_desktop_portal_runtime() {
         mkdir -p "$(dirname "$portal_conf")"
         cat > "$portal_conf" <<'EOF'
 [preferred]
-default=gtk;
+default=gnome;gtk;
 org.freedesktop.impl.portal.FileChooser=gtk;
 org.freedesktop.impl.portal.Access=gtk;
 org.freedesktop.impl.portal.Notification=gtk;
 org.freedesktop.impl.portal.Secret=gnome-keyring;
+org.freedesktop.impl.portal.ScreenCast=gnome;
+org.freedesktop.impl.portal.RemoteDesktop=gnome;
+org.freedesktop.impl.portal.Screenshot=gnome;
 EOF
     done
 
-    systemctl --user restart xdg-desktop-portal.service 2>/dev/null || true
-    ok "Portal de archivos GTK configurado para Niri"
+    systemctl --user restart xdg-desktop-portal.service xdg-desktop-portal-gtk.service xdg-desktop-portal-gnome.service 2>/dev/null || true
+    ok "Portal GTK para archivos y portal GNOME para compartir pantalla configurados en Niri"
 }
 
 sync_cursor_theme_runtime() {
@@ -899,6 +907,8 @@ EOF
         cat > "$HOME/.config/${conf}-flags.conf" <<'EOF'
 --disable-lcd-text
 --font-render-hinting=none
+--ozone-platform-hint=auto
+--enable-features=WebRTCPipeWireCapturer
 EOF
     done
 
