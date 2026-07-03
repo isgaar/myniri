@@ -23,6 +23,7 @@ Este repositorio contiene el setup personal de Ismael. Provee una experiencia de
 * **TopBar QML nativa:** Barra superior con iconos animados (batería con fill por nivel y color, memoria con círculo Canvas de progreso, volumen con barra horizontal 300ms OutCubic, mic con transiciones de color 200ms), diseño Cupertino opcional y visualización minimalista de workspaces agrupados por monitor.
 * **Color de Wallpaper Event-Driven:** Al cambiar el fondo, se calcula una sola vez el acento y la luminancia izquierda/derecha, se guarda en `theme.json` y la topbar lo reutiliza sin procesos de análisis permanentes.
 * **Cursor sincronizado en apps sandboxed:** El instalador sincroniza `breeze_cursors` en Niri, GTK 3/4, KDE, xsettingsd, gsettings y Flatpak para evitar desalineación en aplicaciones como ONLYOFFICE.
+* **Discord compatible con XDG aislado:** El instalador crea `~/.config/discord` y enlaza el perfil desde `~/.config/niri/xdg-config/discord`, evitando fallos del bootstrap cuando Niri usa `XDG_CONFIG_HOME` propio.
 * **Arranque instantáneo y optimizado:** Eliminación de retrasos de 25s al arrancar aplicaciones mediante el enmascaramiento automático de `at-spi-dbus-bus.service` y propagación de `NO_AT_BRIDGE=1`.
 * **Tematización oscura unificada:** Integración perfecta con el tema oscuro de KDE/Dolphin para todas las aplicaciones Qt5/Qt6 y diálogos nativos mediante `QT_QPA_PLATFORMTHEME=kde` y mejoras en el wrapper `honey`.
 * **Soporte Nativo de Modo Oscuro/Claro:** Transiciones dinámicas de colores y contraste inteligente en barras y menús.

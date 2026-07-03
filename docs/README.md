@@ -31,3 +31,4 @@ Para la gestión de audio, se incluye la configuración de `~/.config/wireplumbe
 El archivo `installer.sh` automatiza la configuración en distribuciones Fedora y Debian.
 Contiene un *payload* que almacena todos los archivos mencionados arriba.
 Al ejecutarse, extraerá estas configuraciones en su lugar correcto, instalará dependencias, modificará el renderizado de fuentes (Honey Core) y habilitará los servicios pertinentes.
+Durante la instalación también repara el perfil de Discord para Niri: crea `~/.config/discord` y enlaza `~/.config/niri/xdg-config/discord` hacia ese directorio real, evitando symlinks rotos cuando Discord ejecuta su bootstrap con `XDG_CONFIG_HOME` aislado.

@@ -448,6 +448,23 @@ ENVEOF
     ok "Configs instaladas: Niri, Mako, Quickshell, Honey, fastfetch y scripts"
 }
 
+configure_discord_profile() {
+    local discord_config="$HOME/.config/discord"
+    local niri_xdg_config="$HOME/.config/niri/xdg-config"
+    local niri_discord_config="$niri_xdg_config/discord"
+
+    mkdir -p "$discord_config" "$niri_xdg_config"
+
+    if [[ -L "$niri_discord_config" || ! -e "$niri_discord_config" ]]; then
+        ln -sfnT "$discord_config" "$niri_discord_config"
+        ok "Perfil de Discord enlazado para XDG_CONFIG_HOME de Niri"
+    elif [[ -d "$niri_discord_config" ]]; then
+        ok "Perfil de Discord en Niri ya existe como directorio; se conserva"
+    else
+        warn "No se pudo enlazar Discord: $niri_discord_config existe y no es directorio ni symlink"
+    fi
+}
+
 configure_logind() {
     _cmd_exists systemctl || return 0
 
@@ -1588,6 +1605,7 @@ main() {
     prepare_dirs
     backup_existing
     extract_payload
+    configure_discord_profile
 
     if ! $IS_UPDATE; then
         disable_kde_services
