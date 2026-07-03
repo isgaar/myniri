@@ -1235,6 +1235,11 @@ path = sys.argv[1]
 with open(path, "r", encoding="utf-8") as f:
     text = f.read()
 
+for module in ("subprocess", "re"):
+    if f"import {module}\n" not in text:
+        anchor = "import socket\n" if module == "subprocess" else "import logging\n"
+        text = text.replace(anchor, anchor + f"import {module}\n", 1)
+
 new_class = r'''class NiriIPC:
     def __init__(self, socket_path):
         self.socket_path = socket_path
