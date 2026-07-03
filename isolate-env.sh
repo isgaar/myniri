@@ -25,18 +25,24 @@ if [[ -f "$session_file" ]]; then
 export XDG_CURRENT_DESKTOP=niri
 export XDG_SESSION_DESKTOP=niri
 export QT_QPA_PLATFORM="wayland;xcb"
-export GDK_BACKEND="wayland,x11"
 export MOZ_ENABLE_WAYLAND=1
 export FREETYPE_PROPERTIES="cff:no-stem-darkening=0 autofitter:no-stem-darkening=0"
 export PATH="${HOME}/.local/bin:${PATH}"
+export QT_QPA_PLATFORMTHEME=kde
+export NO_AT_BRIDGE=1
 # ==============================================
 ENV_EOF
 
-    # Quitar la línea #!/bin/sh del archivo original y añadirlo
-    tail -n +2 "$session_file" >> "$tmp_session"
+    # Quitar la línea #!/bin/sh y cualquier bloque gestionado previo antes de añadirlo
+    awk '
+        NR == 1 && $0 ~ /^#!/ { next }
+        $0 == "# === Variables de entorno locales para Niri ===" { skip = 1; next }
+        skip && $0 == "# ==============================================" { skip = 0; next }
+        !skip { print }
+    ' "$session_file" >> "$tmp_session"
 
     # Reemplazar la línea de unset-environment para limpiar todas las variables al salir
-    sed -i 's|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET XDG_SESSION_DESKTOP QT_QPA_PLATFORM GDK_BACKEND MOZ_ENABLE_WAYLAND FREETYPE_PROPERTIES|g' "$tmp_session"
+    sed -i 's|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET.*|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET XDG_SESSION_DESKTOP QT_QPA_PLATFORM GDK_BACKEND MOZ_ENABLE_WAYLAND FREETYPE_PROPERTIES QT_QPA_PLATFORMTHEME NO_AT_BRIDGE|g' "$tmp_session"
 
     # Copiar el archivo temporal de vuelta con sudo
     echo "Se requieren permisos de administrador (sudo) para actualizar $session_file"

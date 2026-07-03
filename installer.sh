@@ -34,7 +34,7 @@ readonly PAYLOAD_MARKER="__NIRI_PAYLOAD__"
 readonly -a DNF_PKGS=(
     niri xwayland-satellite swaybg swaylock kitty mako quickshell cliphist wtype wlsunset playerctl wofi
     xsettingsd kdialog dolphin kate gwenview ark okular blueman
-    brightnessctl grim slurp wl-clipboard jq libnotify dbus-tools glib2
+    brightnessctl grim slurp wl-clipboard jq libnotify dbus-tools glib2 curl zenity desktop-file-utils fontconfig procps-ng iw
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulseaudio wireplumber NetworkManager network-manager-applet bluez bluez-tools rfkill
     xdg-utils polkit udisks2 upower power-profiles-daemon util-linux iproute breeze-icon-theme breeze-gtk fontawesome-fonts rsms-inter-fonts jetbrains-mono-fonts psmisc
@@ -45,7 +45,7 @@ readonly -a DNF_PKGS=(
 readonly -a APT_PKGS=(
     swaybg swaylock kitty mako-notifier cliphist wtype wlsunset playerctl wofi
     xsettingsd kdialog dolphin kate gwenview ark okular blueman
-    brightnessctl grim slurp wl-clipboard jq libnotify-bin dbus dbus-user-session libglib2.0-bin
+    brightnessctl grim slurp wl-clipboard jq libnotify-bin dbus dbus-user-session libglib2.0-bin curl zenity desktop-file-utils fontconfig procps iw
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulse wireplumber network-manager network-manager-gnome bluez rfkill
     xdg-utils polkitd udisks2 upower power-profiles-daemon iproute2 util-linux breeze-cursor-theme breeze-icon-theme breeze-gtk-theme kde-style-breeze fonts-font-awesome fonts-inter fonts-jetbrains-mono psmisc
@@ -73,7 +73,7 @@ readonly -a APT_BUILD_DEPS=(
 readonly -a ARCH_PKGS=(
     niri xwayland-satellite swaybg swaylock kitty mako quickshell cliphist wtype wlsunset playerctl wofi
     xsettingsd kdialog dolphin kate gwenview ark okular blueman
-    brightnessctl grim slurp wl-clipboard jq libnotify dbus glib2
+    brightnessctl grim slurp wl-clipboard jq libnotify dbus glib2 curl zenity desktop-file-utils fontconfig procps-ng iw
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulse wireplumber networkmanager network-manager-applet bluez bluez-utils rfkill
     xdg-utils polkit udisks2 upower power-profiles-daemon util-linux iproute2 breeze-icons breeze-gtk psmisc
@@ -88,8 +88,9 @@ readonly -a REQUIRED_CMDS=(
     niri qs mako makoctl kitty swaybg swaylock brightnessctl grim slurp
     wl-copy wl-paste cliphist jq pactl wpctl nmcli bluetoothctl rfkill notify-send
     playerctl upower udisksctl lsblk dbus-monitor dbus-send gsettings kdialog
+    busctl loginctl pgrep pkill killall powerprofilesctl fc-cache update-desktop-database xdg-settings
 )
-readonly -a OPTIONAL_CMDS=(xwayland-satellite wtype wlsunset wofi blueman-manager flatpak)
+readonly -a OPTIONAL_CMDS=(xwayland-satellite wtype wlsunset wofi blueman-manager flatpak zenity iw)
 
 # ── Helpers ───────────────────────────────────────────────────
 
@@ -342,6 +343,28 @@ extract_payload() {
         exit 1
     fi
 
+    # El payload se generó desde /home/ismael. Si se instala con otro usuario,
+    # ajusta rutas absolutas en archivos de texto sin tocar binarios.
+    local payload_home="/home/ismael"
+    if [[ "$HOME" != "$payload_home" ]]; then
+        local escaped_home="${HOME//&/\\&}"
+        local file
+        while IFS= read -r -d '' file; do
+            if grep -Iq "$payload_home" "$file"; then
+                sed -i "s|$payload_home|$escaped_home|g" "$file"
+            fi
+        done < <(
+            find \
+                "$HOME/.config/niri" \
+                "$HOME/.config/quickshell" \
+                "$HOME/.config/mako" \
+                "$HOME/.config/systemd/user" \
+                "$HOME/scripts" \
+                -type f -print0 2>/dev/null
+        )
+        ok "Rutas del payload normalizadas para $HOME"
+    fi
+
     # Instalar regla de Polkit para udisks2 si el archivo existe y es diferente a la actual
     if [[ -f "$HOME/.config/niri/10-udisks2.rules" ]]; then
         if [[ -n "${ANTIGRAVITY_AGENT:-}" ]]; then
@@ -447,8 +470,8 @@ configure_environment() {
         local tmp_session
         tmp_session=$(mktemp)
         
-        # Leer el archivo original, insertar las variables de exportación después del shebang
-        # y reemplazar el unset-environment al final.
+        # Leer el archivo original sin shebang ni bloque gestionado previo, para que
+        # el paso sea seguro tanto en instalaciones nuevas como en actualizaciones.
         cat > "$tmp_session" <<'ENV_EOF'
 #!/bin/sh
 
@@ -464,11 +487,15 @@ export NO_AT_BRIDGE=1
 # ==============================================
 ENV_EOF
 
-        # Quitar la línea #!/bin/sh del archivo original y añadirlo
-        tail -n +2 "$session_file" >> "$tmp_session"
+        awk '
+            NR == 1 && $0 ~ /^#!/ { next }
+            $0 == "# === Variables de entorno locales para Niri ===" { skip = 1; next }
+            skip && $0 == "# ==============================================" { skip = 0; next }
+            !skip { print }
+        ' "$session_file" >> "$tmp_session"
 
         # Reemplazar la línea de unset-environment para limpiar todas las variables al salir
-        sed -i 's|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET XDG_SESSION_DESKTOP QT_QPA_PLATFORM GDK_BACKEND MOZ_ENABLE_WAYLAND FREETYPE_PROPERTIES QT_QPA_PLATFORMTHEME NO_AT_BRIDGE|g' "$tmp_session"
+        sed -i 's|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET.*|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET XDG_SESSION_DESKTOP QT_QPA_PLATFORM GDK_BACKEND MOZ_ENABLE_WAYLAND FREETYPE_PROPERTIES QT_QPA_PLATFORMTHEME NO_AT_BRIDGE|g' "$tmp_session"
 
         sudo cp "$tmp_session" "$session_file"
         sudo chmod +x "$session_file"
@@ -1229,11 +1256,11 @@ main() {
     if ! $IS_UPDATE; then
         disable_kde_services
         configure_logind
-        configure_environment
         configure_fonts
         configure_honey_core
     fi
 
+    configure_environment
     configure_honey_current_runtime
     configure_mimeapps_current
     configure_autotiler_and_polkit
