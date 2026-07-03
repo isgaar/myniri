@@ -675,6 +675,18 @@ configure_audio() {
     ok "Servicios de PipeWire habilitados"
 }
 
+configure_keyring_runtime() {
+    _cmd_exists systemctl || return 0
+    _cmd_exists gnome-keyring-daemon || {
+        warn "gnome-keyring-daemon no esta instalado; algunas apps pueden pedir crear un keyring."
+        return 0
+    }
+
+    echo "Habilitando GNOME Keyring para secretos de apps en Niri..."
+    systemctl --user enable --now gnome-keyring-daemon.socket 2>/dev/null || true
+    ok "GNOME Keyring habilitado para Discord, navegadores y libsecret"
+}
+
 configure_xdg_desktop_portal_runtime() {
     echo "Configurando xdg-desktop-portal para Niri..."
     local portal_conf
@@ -1616,6 +1628,7 @@ main() {
 
     configure_environment
     configure_xdg_desktop_portal_runtime
+    configure_keyring_runtime
     configure_honey_current_runtime
     configure_mimeapps_current
     configure_autotiler_and_polkit
