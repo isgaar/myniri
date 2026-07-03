@@ -412,6 +412,7 @@ export KDED_FIRST_STARTUP=1
 export QT_AUTO_SCREEN_SCALE_FACTOR=0
 export QT_ENABLE_HIGHDPI_SCALING=0
 export ELECTRON_USE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT=auto
 export EDITOR=nano
 export BROWSER=/opt/zen/zen
 export TERMINAL=kitty
@@ -675,6 +676,7 @@ if [ -d "$HONEY_LIB_DIR" ]; then
 fi
 
 export ELECTRON_USE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT=auto
 export EDITOR=nano
 export BROWSER=/opt/zen/zen
 export TERMINAL=kitty
@@ -696,6 +698,7 @@ export XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config"
 export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
 export XDG_DATA_DIRS="${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
 export HONEY_RENDER=1
+export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
 export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 truetype:interpreter-version=40 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
 export QT_QPA_PLATFORM="wayland;xcb"
 unset QT_WAYLAND_DECORATION
@@ -980,6 +983,7 @@ StartLimitIntervalSec=30
 StartLimitBurst=5
 
 [Service]
+ExecCondition=/usr/bin/sh -c '[ "$XDG_CURRENT_DESKTOP" = "niri" ] || [ -n "$NIRI_SOCKET" ]'
 ExecStart=/usr/bin/python3 $HOME/scripts/niri_autotiler.py
 Restart=on-failure
 RestartSec=3s
@@ -996,6 +1000,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+ExecCondition=/usr/bin/sh -c '[ "$XDG_CURRENT_DESKTOP" = "niri" ] || [ -n "$NIRI_SOCKET" ]'
 ExecStart=/usr/bin/python3 $HOME/scripts/polkit_agent.py
 Restart=on-failure
 RestartSec=2
@@ -1041,23 +1046,37 @@ configure_resource_saving_services() {
     echo "Aplicando optimizaciones de memoria de arranque..."
 
     mkdir -p "$HOME/.config/autostart"
+
+    # systemd-xdg-autostart-generator lee ~/.config/autostart antes que
+    # XDG_CONFIG_HOME. Este override evita que KDE levante xwaylandvideobridge
+    # en Niri y abra la ventana "Pasarela de grabación de Wayland a X".
+    cat > "$HOME/.config/autostart/org.kde.xwaylandvideobridge.desktop" <<'EOF'
+[Desktop Entry]
+Hidden=true
+EOF
+
     local desktop
     for desktop in \
         nm-applet.desktop \
         baloo_file.desktop \
-        org.kde.kdeconnect.daemon.desktop \
-        org.kde.xwaylandvideobridge.desktop; do
+        org.kde.kdeconnect.daemon.desktop; do
         if [[ -f "$HOME/.config/autostart/$desktop" ]]; then
             grep -q '^Hidden=true' "$HOME/.config/autostart/$desktop" || printf '\nHidden=true\n' >> "$HOME/.config/autostart/$desktop"
         fi
     done
 
+    systemctl --user stop app-org.kde.xwaylandvideobridge@autostart.service 2>/dev/null || true
+    systemctl --user daemon-reload 2>/dev/null || true
+
+    # No enmascarar servicios centrales de Plasma: KDE queda sin panel/escritorio.
+    systemctl --user unmask \
+        plasma-plasmashell.service \
+        plasma-ksmserver.service \
+        plasma-kcminit.service 2>/dev/null || true
+
     systemctl --user mask \
         mako.service \
         kde-baloo.service \
-        plasma-plasmashell.service \
-        plasma-ksmserver.service \
-        plasma-kcminit.service \
         obex.service \
         drkonqi-coredump-pickup.service \
         drkonqi-coredump-cleanup.service \
@@ -1086,12 +1105,12 @@ env_line = (
     'systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP DISPLAY NO_AT_BRIDGE NIRI_SOCKET '
     'XDG_CONFIG_HOME XDG_MENU_PREFIX XDG_DATA_DIRS XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS '
     'QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM GTK_THEME XCURSOR_THEME XCURSOR_SIZE XCURSOR_PATH '
-    'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP QML_FORCE_DISK_CACHE && '
+    'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP QML_FORCE_DISK_CACHE ELECTRON_OZONE_PLATFORM_HINT && '
     'hash dbus-update-activation-environment 2>/dev/null && '
     'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri DISPLAY NO_AT_BRIDGE '
     'QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM GTK_THEME XCURSOR_THEME XCURSOR_SIZE XCURSOR_PATH '
     'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP XDG_CONFIG_HOME XDG_MENU_PREFIX XDG_DATA_DIRS '
-    'XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS QML_FORCE_DISK_CACHE"'
+    'XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS QML_FORCE_DISK_CACHE ELECTRON_OZONE_PLATFORM_HINT"'
 )
 
 if re.search(r'^spawn-sh-at-startup "source ~/.config/niri/env\.sh && systemctl --user import-environment .*$',
@@ -1143,6 +1162,237 @@ PY
 
     niri validate -c "$config" 2>/dev/null || warn "config.kdl no pudo validarse en este entorno; revisa con: niri validate -c ~/.config/niri/config.kdl"
     ok "config.kdl ajustado"
+}
+
+apply_recent_runtime_fixes() {
+    echo "Aplicando fixes recientes: wallpaper, VSCodium, IPC de Niri y servicios aislados..."
+
+    mkdir -p "$HOME/.config/niri" "$HOME/scripts"
+
+    local default_wallpaper="$HOME/Imágenes/Wallpapers/if-the-mac-finder-icon-can-be-mo.png"
+    local system_wallpaper="/usr/share/wallpapers/Next/contents/images_dark/5120x2880.png"
+    local wallpaper_file="$HOME/.config/niri/wallpaper.txt"
+    local selected_wallpaper=""
+
+    if [[ -f "$default_wallpaper" ]]; then
+        selected_wallpaper="$default_wallpaper"
+    elif [[ -f "$system_wallpaper" ]]; then
+        selected_wallpaper="$system_wallpaper"
+    fi
+
+    if [[ -n "$selected_wallpaper" ]]; then
+        printf '%s\n' "$selected_wallpaper" > "$wallpaper_file"
+    fi
+
+    cat > "$HOME/scripts/set_wallpaper.sh" <<'EOF'
+#!/bin/bash
+# ~/scripts/set_wallpaper.sh
+
+WALLPAPER_FILE="$HOME/.config/niri/wallpaper.txt"
+DEFAULT_WALLPAPER="$HOME/Imágenes/Wallpapers/if-the-mac-finder-icon-can-be-mo.png"
+SYSTEM_FALLBACK="/usr/share/wallpapers/Next/contents/images_dark/5120x2880.png"
+
+mkdir -p "$(dirname "$WALLPAPER_FILE")"
+if [ ! -f "$WALLPAPER_FILE" ]; then
+    printf '%s\n' "$DEFAULT_WALLPAPER" > "$WALLPAPER_FILE"
+fi
+
+WP_PATH=$(cat "$WALLPAPER_FILE")
+if [ ! -f "$WP_PATH" ]; then
+    if [ -f "$DEFAULT_WALLPAPER" ]; then
+        WP_PATH="$DEFAULT_WALLPAPER"
+    else
+        WP_PATH="$SYSTEM_FALLBACK"
+    fi
+    printf '%s\n' "$WP_PATH" > "$WALLPAPER_FILE"
+fi
+
+killall swaybg 2>/dev/null || true
+if [ -f "$WP_PATH" ]; then
+    swaybg -i "$WP_PATH" -m fill &
+else
+    swaybg -c 101014 -m solid_color &
+fi
+EOF
+    chmod +x "$HOME/scripts/set_wallpaper.sh"
+
+    local codium_lock="$HOME/.config/VSCodium/code.lock"
+    if [[ -f "$codium_lock" ]]; then
+        local lock_pid
+        lock_pid="$(tr -cd '0-9' < "$codium_lock" 2>/dev/null || true)"
+        if [[ -z "$lock_pid" || ! -d "/proc/$lock_pid" ]]; then
+            rm -f "$codium_lock"
+            ok "Lock huérfano de VSCodium eliminado"
+        fi
+    fi
+
+    if [[ -f "$HOME/scripts/niri_autotiler.py" ]]; then
+        python3 - "$HOME/scripts/niri_autotiler.py" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    text = f.read()
+
+new_class = r'''class NiriIPC:
+    def __init__(self, socket_path):
+        self.socket_path = socket_path
+        self._action_sock = None
+
+    @staticmethod
+    def _action_to_cli(action_name: str) -> str:
+        return re.sub(r"(?<!^)(?=[A-Z])", "-", action_name).lower()
+
+    def request(self, req_name: str):
+        command = self._action_to_cli(req_name)
+        response_key = {
+            "outputs": "Outputs",
+            "workspaces": "Workspaces",
+            "windows": "Windows",
+        }.get(command, req_name)
+        try:
+            result = subprocess.run(
+                ["niri", "msg", "--json", command],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                logging.error("niri msg %s failed: %s", command, result.stderr.strip())
+                return {"Err": result.stderr.strip()}
+            return {"Ok": {response_key: json.loads(result.stdout)}}
+        except Exception as e:
+            logging.error("Error ejecutando niri msg %s: %s", command, e)
+            return {"Err": str(e)}
+
+    def action(self, action_name: str, **kwargs):
+        command = self._action_to_cli(action_name)
+        args = ["niri", "msg", "action", command]
+        if "id" in kwargs:
+            args.extend(["--id", str(kwargs["id"])])
+        if command == "set-column-width":
+            change = kwargs.get("change", {})
+            if isinstance(change, dict) and "SetProportion" in change:
+                pct = float(change["SetProportion"])
+                pct_str = f"{pct:.3f}".rstrip("0").rstrip(".")
+                args.append(f"{pct_str}%")
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                logging.error("%s failed: %s", " ".join(args), result.stderr.strip())
+                return {"Err": result.stderr.strip()}
+            return {"Ok": None}
+        except Exception as e:
+            logging.error("Error ejecutando %s: %s", " ".join(args), e)
+            return {"Err": str(e)}
+
+    def event_stream(self):
+        while True:
+            try:
+                logging.info("Abriendo event-stream con niri msg...")
+                proc = subprocess.Popen(
+                    ["niri", "msg", "--json", "event-stream"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    if line.strip():
+                        yield json.loads(line)
+                stderr = proc.stderr.read().strip() if proc.stderr else ""
+                logging.error("event-stream terminó. %s", stderr)
+            except Exception as e:
+                logging.error(f"Error en el stream de eventos ({e}). Reintentando en 2 segundos...")
+            time.sleep(2)
+'''
+
+pattern = r'class NiriIPC:.*?(?=\n# ── Estado del Autotiler)'
+updated, count = re.subn(pattern, new_class, text, count=1, flags=re.S)
+if count:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(updated)
+PY
+        chmod +x "$HOME/scripts/niri_autotiler.py"
+    fi
+
+    if [[ -f "$HOME/scripts/update_monitors.py" ]]; then
+        python3 - "$HOME/scripts/update_monitors.py" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    text = f.read()
+
+if "_OUTPUT_ACTIONS = None" not in text:
+    text = text.replace(
+        "QUICKSHELL_RESTART_COOLDOWN = 8.0\n",
+        "QUICKSHELL_RESTART_COOLDOWN = 8.0\n_OUTPUT_ACTIONS = None\n",
+        1,
+    )
+
+if "def output_action_supported(action):" not in text:
+    marker = re.search(r'def run_niri\(args_list\):.*?return False\n', text, flags=re.S)
+    helper = r'''
+
+def output_action_supported(action):
+    global _OUTPUT_ACTIONS
+    if _OUTPUT_ACTIONS is None:
+        _OUTPUT_ACTIONS = set()
+        try:
+            result = subprocess.run(
+                ["niri", "msg", "output", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    match = re.match(r"\s{2}([a-z0-9-]+)\s+", line)
+                    if match:
+                        _OUTPUT_ACTIONS.add(match.group(1))
+        except Exception as e:
+            log_warning(f"Error checking supported Niri output actions: {e}")
+    return action in _OUTPUT_ACTIONS
+'''
+    if marker:
+        text = text[:marker.end()] + helper + text[marker.end():]
+
+text = re.sub(
+    r'(\n\s*)if max_bpc:\n\s*res = subprocess\.run\(\n\s*\["niri", "msg", "output", name, "max-bpc", str\(max_bpc\)\],\n\s*capture_output=True,\n\s*text=True\n\s*\)\n\s*if res\.returncode != 0:\n\s*log_warning\(f"Error setting max-bpc for \{name\} to \{max_bpc\}: \{res\.stderr\.strip\(\)\}"\)',
+    r'\1if max_bpc and output_action_supported("max-bpc"):\n\1    res = subprocess.run(\n\1        ["niri", "msg", "output", name, "max-bpc", str(max_bpc)],\n\1        capture_output=True,\n\1        text=True\n\1    )\n\1    if res.returncode != 0:\n\1        log_warning(f"Error setting max-bpc for {name} to {max_bpc}: {res.stderr.strip()}")\n\1elif max_bpc:\n\1    log_warning(f"Niri does not support setting max-bpc via IPC in this version. Keeping saved value for {name}: {max_bpc}")',
+    text,
+    count=1,
+)
+
+text = re.sub(
+    r'def set_max_bpc\(name, max_bpc\):\n\s*bpc = int\(max_bpc\)\n\s*if bpc not in \(6, 8, 10, 12, 14, 16\):\n\s*raise ValueError\("max-bpc must be one of 6, 8, 10, 12, 14, 16"\)\n\s*if run_niri\(\["output", name, "max-bpc", str\(bpc\)\]\):\n\s*update_saved_monitor\(name, max_bpc=bpc\)',
+    '''def set_max_bpc(name, max_bpc):
+    bpc = int(max_bpc)
+    if bpc not in (6, 8, 10, 12, 14, 16):
+        raise ValueError("max-bpc must be one of 6, 8, 10, 12, 14, 16")
+    if output_action_supported("max-bpc"):
+        if run_niri(["output", name, "max-bpc", str(bpc)]):
+            update_saved_monitor(name, max_bpc=bpc)
+    else:
+        log_warning(f"Niri does not support setting max-bpc via IPC in this version. Saved requested value for {name}: {bpc}")
+        update_saved_monitor(name, max_bpc=bpc)''',
+    text,
+    count=1,
+)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(text)
+PY
+        chmod +x "$HOME/scripts/update_monitors.py"
+    fi
+
+    python3 -m py_compile "$HOME/scripts/niri_autotiler.py" "$HOME/scripts/update_monitors.py" 2>/dev/null || \
+        warn "No se pudo validar sintaxis de scripts de Niri despues de aplicar fixes."
+
+    ok "Fixes recientes aplicados"
 }
 
 post_checks() {
@@ -1265,6 +1515,7 @@ main() {
     configure_mimeapps_current
     configure_autotiler_and_polkit
     configure_niri_runtime_config
+    apply_recent_runtime_fixes
     sync_cursor_theme_runtime
     configure_resource_saving_services
     configure_audio
