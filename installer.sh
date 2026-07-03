@@ -37,7 +37,7 @@ readonly -a DNF_PKGS=(
     brightnessctl grim slurp wl-clipboard jq libnotify dbus-tools glib2 curl zenity desktop-file-utils fontconfig procps-ng iw
     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-gnome gnome-keyring
     pipewire pipewire-pulseaudio wireplumber NetworkManager network-manager-applet bluez bluez-tools rfkill
-    xdg-utils polkit udisks2 upower power-profiles-daemon util-linux iproute breeze-icon-theme breeze-gtk fontawesome-fonts rsms-inter-fonts jetbrains-mono-fonts psmisc
+    xdg-utils polkit udisks2 upower tuned tuned-ppd util-linux iproute breeze-icon-theme breeze-gtk fontawesome-fonts rsms-inter-fonts jetbrains-mono-fonts psmisc
     python3 python3-pillow python3-gobject python3-dbus polkit-gir
     google-noto-color-emoji-fonts google-noto-sans-cjk-fonts google-noto-serif-cjk-fonts google-noto-fonts-common fastfetch
 )
@@ -88,7 +88,7 @@ readonly -a REQUIRED_CMDS=(
     niri qs mako makoctl kitty swaybg swaylock brightnessctl grim slurp
     wl-copy wl-paste cliphist jq pactl wpctl nmcli bluetoothctl rfkill notify-send
     playerctl upower udisksctl lsblk dbus-monitor dbus-send gsettings kdialog
-    busctl loginctl pgrep pkill killall powerprofilesctl fc-cache update-desktop-database xdg-settings
+    busctl loginctl pgrep pkill killall fc-cache update-desktop-database xdg-settings
 )
 readonly -a OPTIONAL_CMDS=(xwayland-satellite wtype wlsunset wofi blueman-manager flatpak zenity iw)
 
@@ -280,6 +280,29 @@ install_deps() {
     fi
 
     ok "Dependencias base y compilaciones completadas"
+}
+
+configure_fedora_power_profiles() {
+    [[ "$(_detect_pm)" == "dnf" ]] || return 0
+    _cmd_exists systemctl || return 0
+
+    echo "Configurando perfiles de energia en Fedora con TuneD..."
+
+    # Fedora 41+ usa TuneD como daemon de perfiles de energia. tuned-ppd
+    # reemplaza la API de power-profiles-daemon para escritorios actuales.
+    if ! _cmd_exists tuned-adm; then
+        warn "TuneD no esta disponible; instala tuned/tuned-ppd para el selector de energia en Fedora."
+        return 0
+    fi
+
+    sudo systemctl disable --now power-profiles-daemon.service 2>/dev/null || true
+    sudo systemctl enable --now tuned.service 2>/dev/null || warn "No se pudo habilitar tuned.service"
+
+    if rpm -q tuned-ppd >/dev/null 2>&1; then
+        ok "Fedora usa TuneD/tuned-ppd para perfiles de energia"
+    else
+        warn "tuned-ppd no esta instalado; el instalador intento instalarlo con dnf."
+    fi
 }
 
 prepare_dirs() {
@@ -628,6 +651,28 @@ configure_audio() {
     echo "Habilitando servicios de PipeWire y WirePlumber..."
     systemctl --user enable --now pipewire.socket pipewire.service wireplumber.service pipewire-pulse.socket pipewire-pulse.service 2>/dev/null || true
     ok "Servicios de PipeWire habilitados"
+}
+
+configure_xdg_desktop_portal_runtime() {
+    echo "Configurando xdg-desktop-portal para Niri..."
+    local portal_conf
+    for portal_conf in \
+        "$HOME/.config/xdg-desktop-portal/niri-portals.conf" \
+        "$HOME/.config/niri/xdg-config/xdg-desktop-portal/niri-portals.conf"
+    do
+        mkdir -p "$(dirname "$portal_conf")"
+        cat > "$portal_conf" <<'EOF'
+[preferred]
+default=gtk;
+org.freedesktop.impl.portal.FileChooser=gtk;
+org.freedesktop.impl.portal.Access=gtk;
+org.freedesktop.impl.portal.Notification=gtk;
+org.freedesktop.impl.portal.Secret=gnome-keyring;
+EOF
+    done
+
+    systemctl --user restart xdg-desktop-portal.service 2>/dev/null || true
+    ok "Portal de archivos GTK configurado para Niri"
 }
 
 sync_cursor_theme_runtime() {
@@ -1434,6 +1479,11 @@ post_checks() {
     for cmd in "${REQUIRED_CMDS[@]}"; do
         _cmd_exists "$cmd" || warn "Falta comando requerido: $cmd"
     done
+    if [[ "$(_detect_pm)" == "dnf" ]]; then
+        _cmd_exists tuned-adm || warn "Falta comando requerido en Fedora: tuned-adm"
+    else
+        _cmd_exists powerprofilesctl || warn "Falta comando requerido: powerprofilesctl"
+    fi
     for cmd in "${OPTIONAL_CMDS[@]}"; do
         _cmd_exists "$cmd" || warn "Falta comando opcional: $cmd"
     done
@@ -1517,6 +1567,7 @@ main() {
     fi
 
     install_deps
+    configure_fedora_power_profiles
 
     if ! $IS_UPDATE && [[ "$SELECTED_DM" == "sddm" ]]; then
         local pm=$(_detect_pm)
@@ -1536,6 +1587,7 @@ main() {
     fi
 
     configure_environment
+    configure_xdg_desktop_portal_runtime
     configure_honey_current_runtime
     configure_mimeapps_current
     configure_autotiler_and_polkit
