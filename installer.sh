@@ -1156,6 +1156,26 @@ content = re.sub(
     flags=re.MULTILINE,
 )
 
+content = re.sub(
+    r'(match app-id="floating_kitty".*?open-floating true\s*)'
+    r'default-column-width\s*\{\s*fixed\s+\d+\s*;\s*\}\s*'
+    r'default-window-height\s*\{\s*fixed\s+\d+\s*;\s*\}',
+    r'\1default-column-width { proportion 0.52; }\n    default-window-height { proportion 0.56; }',
+    content,
+    count=1,
+    flags=re.S,
+)
+
+content = re.sub(
+    r'(match title="Personalización".*?open-floating true\s*)'
+    r'default-column-width\s*\{\s*fixed\s+\d+\s*;\s*\}\s*'
+    r'default-window-height\s*\{\s*fixed\s+\d+\s*;\s*\}',
+    r'\1default-column-width { proportion 0.42; }\n    default-window-height { proportion 0.60; }',
+    content,
+    count=1,
+    flags=re.S,
+)
+
 with open(path, "w", encoding="utf-8") as f:
     f.write(content)
 PY
