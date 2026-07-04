@@ -584,6 +584,7 @@ EOF
 --font-render-hinting=none
 --ozone-platform-hint=auto
 --enable-features=WebRTCPipeWireCapturer
+--password-store=basic
 EOF
     done
     ok "Configuración de fontconfig estilo Honey aplicada"
@@ -685,6 +686,29 @@ configure_keyring_runtime() {
     echo "Habilitando GNOME Keyring para secretos de apps en Niri..."
     systemctl --user enable --now gnome-keyring-daemon.socket 2>/dev/null || true
     ok "GNOME Keyring habilitado para Discord, navegadores y libsecret"
+}
+
+configure_brave_password_store() {
+    local src_desktop="/usr/share/applications/brave-browser.desktop"
+    local dst_desktop="$HOME/.local/share/applications/brave-browser.desktop"
+
+    [[ -f "$src_desktop" ]] || return 0
+
+    mkdir -p "$(dirname "$dst_desktop")"
+    cp "$src_desktop" "$dst_desktop"
+    sed -i -E '
+        /^Exec=\/usr\/bin\/brave-browser-stable( |$)/ {
+            /--password-store=basic/! s|^Exec=/usr/bin/brave-browser-stable|Exec=/usr/bin/brave-browser-stable --password-store=basic|
+        }
+        /^Exec=\/usr\/bin\/brave-browser( |$)/ {
+            /--password-store=basic/! s|^Exec=/usr/bin/brave-browser|Exec=/usr/bin/brave-browser --password-store=basic|
+        }
+    ' "$dst_desktop"
+
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+    XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config" XDG_CURRENT_DESKTOP=niri XDG_MENU_PREFIX=plasma- \
+        kbuildsycoca6 --noincremental 2>/dev/null || true
+    ok "Brave configurado para no invocar gcr-prompter"
 }
 
 configure_xdg_desktop_portal_runtime() {
@@ -938,6 +962,7 @@ EOF
 --font-render-hinting=none
 --ozone-platform-hint=auto
 --enable-features=WebRTCPipeWireCapturer
+--password-store=basic
 EOF
     done
 
@@ -1629,6 +1654,7 @@ main() {
     configure_environment
     configure_xdg_desktop_portal_runtime
     configure_keyring_runtime
+    configure_brave_password_store
     configure_honey_current_runtime
     configure_mimeapps_current
     configure_autotiler_and_polkit

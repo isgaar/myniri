@@ -32,4 +32,4 @@ El archivo `installer.sh` automatiza la configuración en distribuciones Fedora 
 Contiene un *payload* que almacena todos los archivos mencionados arriba.
 Al ejecutarse, extraerá estas configuraciones en su lugar correcto, instalará dependencias, modificará el renderizado de fuentes (Honey Core) y habilitará los servicios pertinentes.
 Durante la instalación también repara el perfil de Discord para Niri: crea `~/.config/discord` y enlaza `~/.config/niri/xdg-config/discord` hacia ese directorio real, evitando symlinks rotos cuando Discord ejecuta su bootstrap con `XDG_CONFIG_HOME` aislado.
-Además habilita `gnome-keyring-daemon.socket` en systemd de usuario para que Discord, Brave y otras aplicaciones que usan `libsecret` encuentren el servicio de secretos de la sesión y no disparen prompts recurrentes de `gcr-prompter`.
+Además habilita `gnome-keyring-daemon.socket` en systemd de usuario y aplica `--password-store=basic` en los flags de Chromium/Brave/Electron y en el lanzador `.desktop` de Brave para que esas apps no disparen prompts recurrentes de `gcr-prompter` cuando no hay keyring inicializado.
