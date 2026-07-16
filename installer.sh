@@ -5,6 +5,8 @@
 #   - Wallpaper/TopBar: cálculo event-driven de accent/luminancia en theme.json, sin polling QML.
 #   - Niri Autotiler: guard rail porcentual para ventanas únicas en 4:3, 16:10, 16:9 y ultrawide.
 #   - Cursor: sincronización Niri/GTK/KDE/xsettingsd/gsettings/Flatpak para evitar temas desalineados.
+#   - Honey Quartz: render grayscale sin RGB/subpixel, pesos Inter equilibrados y soporte Niri/KDE/GNOME.
+#   - AppLauncher: material translúcido con blur contenido dentro de la ventana visible.
 # ============================================================
 
 set -euo pipefail
@@ -440,6 +442,14 @@ export QT_AUTO_SCREEN_SCALE_FACTOR=0
 export QT_ENABLE_HIGHDPI_SCALING=0
 export ELECTRON_USE_WAYLAND=1
 export ELECTRON_OZONE_PLATFORM_HINT=auto
+export MOZ_ENABLE_WAYLAND=1
+export MOZ_USE_XINPUT2=1
+export HONEY_RENDER=quartz
+export HONEY_RENDER_PROFILE=quartz
+export CHROMIUM_FLAGS="--disable-lcd-text --font-render-hinting=none --ozone-platform-hint=auto --enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer --password-store=basic"
+export CHROME_FLAGS="$CHROMIUM_FLAGS"
+export CHROMIUM_USER_FLAGS="$CHROMIUM_FLAGS"
+export ELECTRON_USER_FLAGS="$CHROMIUM_FLAGS"
 export EDITOR=nano
 export BROWSER=/opt/zen/zen
 export TERMINAL=kitty
@@ -594,7 +604,16 @@ export XDG_CURRENT_DESKTOP=niri
 export XDG_SESSION_DESKTOP=niri
 export QT_QPA_PLATFORM="wayland;xcb"
 export MOZ_ENABLE_WAYLAND=1
-export FREETYPE_PROPERTIES="cff:no-stem-darkening=0 autofitter:no-stem-darkening=0"
+export MOZ_USE_XINPUT2=1
+export HONEY_RENDER=quartz
+export HONEY_RENDER_PROFILE=quartz
+export FREETYPE_PROPERTIES="truetype:interpreter-version=40 cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0"
+export CHROMIUM_FLAGS="--disable-lcd-text --font-render-hinting=none --ozone-platform-hint=auto --enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer --password-store=basic"
+export CHROME_FLAGS="$CHROMIUM_FLAGS"
+export CHROMIUM_USER_FLAGS="$CHROMIUM_FLAGS"
+export ELECTRON_USER_FLAGS="$CHROMIUM_FLAGS"
+export ELECTRON_USE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT=auto
 export PATH="${HOME}/.local/bin:${PATH}"
 export QT_QPA_PLATFORMTHEME=kde
 export NO_AT_BRIDGE=1
@@ -609,7 +628,7 @@ ENV_EOF
         ' "$session_file" >> "$tmp_session"
 
         # Reemplazar la línea de unset-environment para limpiar todas las variables al salir
-        sed -i 's|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET.*|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET XDG_SESSION_DESKTOP QT_QPA_PLATFORM GDK_BACKEND MOZ_ENABLE_WAYLAND FREETYPE_PROPERTIES QT_QPA_PLATFORMTHEME NO_AT_BRIDGE|g' "$tmp_session"
+        sed -i 's|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET.*|systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP NIRI_SOCKET XDG_SESSION_DESKTOP QT_QPA_PLATFORM GDK_BACKEND MOZ_ENABLE_WAYLAND MOZ_USE_XINPUT2 FREETYPE_PROPERTIES QT_QPA_PLATFORMTHEME NO_AT_BRIDGE HONEY_RENDER HONEY_RENDER_PROFILE CHROMIUM_FLAGS CHROME_FLAGS CHROMIUM_USER_FLAGS ELECTRON_USER_FLAGS ELECTRON_USE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT|g' "$tmp_session"
 
         sudo cp "$tmp_session" "$session_file"
         sudo chmod +x "$session_file"
@@ -642,21 +661,23 @@ configure_fonts() {
 </fontconfig>
 EOF
 
-    # GTK
+    # GNOME/GTK: antialias gris y pesos de UI sin forzar subpixel RGB.
     gsettings set org.gnome.desktop.interface font-antialiasing 'grayscale' || true
-    gsettings set org.gnome.desktop.interface font-rgba-order 'none' || true
+    gsettings set org.gnome.desktop.interface font-hinting 'none' || true
+    gsettings set org.gnome.desktop.interface font-name 'Inter Medium 11' || true
+    gsettings set org.gnome.desktop.interface document-font-name 'Inter 11' || true
 
     # X11
     echo "Xft.rgba: none" >> "$HOME/.Xresources"
     echo "Xft.lcdfilter: lcdnone" >> "$HOME/.Xresources"
 
-    # Chromium-based apps
-    for conf in chromium chrome electron brave brave-browser; do
+    # Chromium/Electron apps: grayscale AA, Wayland y sin prompts de keyring.
+    for conf in chromium chrome electron brave brave-browser brave-origin code codium vscode-oss discord antigravity-ide; do
         cat > "$HOME/.config/${conf}-flags.conf" <<'EOF'
 --disable-lcd-text
 --font-render-hinting=none
 --ozone-platform-hint=auto
---enable-features=WebRTCPipeWireCapturer
+--enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer
 --password-store=basic
 EOF
     done
@@ -668,15 +689,25 @@ configure_honey_core() {
     mkdir -p "$HOME/.local/bin"
     cat > "$HOME/.local/bin/honey" <<'EOF'
 #!/usr/bin/env bash
-if [ -f "$HOME/.config/niri/env.sh" ]; then
+desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
+desktop_probe="${desktop_probe,,}"
+if { [[ "$desktop_probe" == *niri* ]] || [ "${HONEY_USE_NIRI_ENV:-0}" = "1" ]; } && [ -f "$HOME/.config/niri/env.sh" ]; then
     source "$HOME/.config/niri/env.sh"
 fi
-export FREETYPE_PROPERTIES="cff:no-stem-darkening=0 autofitter:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0"
+export HONEY_RENDER=quartz
+export HONEY_RENDER_PROFILE=quartz
+export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-truetype:interpreter-version=40 cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
 HONEY_LIB_DIR="$HOME/.config/honey/lib"
 if [ -d "$HONEY_LIB_DIR" ]; then
     export LD_LIBRARY_PATH="$HONEY_LIB_DIR:$LD_LIBRARY_PATH"
 fi
+export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
 export QT_QPA_PLATFORM="wayland;xcb"
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
+export QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}"
+export ELECTRON_USE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
+export MOZ_ENABLE_WAYLAND=1
 exec "$@"
 EOF
     chmod +x "$HOME/.local/bin/honey"
@@ -709,11 +740,6 @@ EOF
   <match target="pattern">
     <test name="family" compare="eq"><string>sans-serif</string></test>
     <edit name="family" mode="prepend" binding="strong"><string>Inter</string></edit>
-  </match>
-  <match target="pattern">
-    <test name="family" compare="eq"><string>Inter</string></test>
-    <test name="weight" compare="less_eq"><const>regular</const></test>
-    <edit name="weight" mode="assign"><const>medium</const></edit>
   </match>
 </fontconfig>
 EOF
@@ -762,26 +788,34 @@ configure_keyring_runtime() {
 }
 
 configure_brave_password_store() {
-    local src_desktop="/usr/share/applications/brave-browser.desktop"
-    local dst_desktop="$HOME/.local/share/applications/brave-browser.desktop"
+    local desktop_name src_desktop dst_desktop
+    for desktop_name in brave-browser brave-origin; do
+        src_desktop="/usr/share/applications/${desktop_name}.desktop"
+        dst_desktop="$HOME/.local/share/applications/${desktop_name}.desktop"
+        [[ -f "$src_desktop" ]] || continue
 
-    [[ -f "$src_desktop" ]] || return 0
-
-    mkdir -p "$(dirname "$dst_desktop")"
-    cp "$src_desktop" "$dst_desktop"
-    sed -i -E '
-        /^Exec=\/usr\/bin\/brave-browser-stable( |$)/ {
-            /--password-store=basic/! s|^Exec=/usr/bin/brave-browser-stable|Exec=/usr/bin/brave-browser-stable --password-store=basic|
-        }
-        /^Exec=\/usr\/bin\/brave-browser( |$)/ {
-            /--password-store=basic/! s|^Exec=/usr/bin/brave-browser|Exec=/usr/bin/brave-browser --password-store=basic|
-        }
-    ' "$dst_desktop"
+        mkdir -p "$(dirname "$dst_desktop")"
+        cp "$src_desktop" "$dst_desktop"
+        sed -i -E '
+            /^Exec=\/usr\/bin\/brave-browser-stable( |$)/ {
+                /--password-store=basic/! s|^Exec=/usr/bin/brave-browser-stable|Exec=/usr/bin/brave-browser-stable --password-store=basic|
+            }
+            /^Exec=\/usr\/bin\/brave-browser( |$)/ {
+                /--password-store=basic/! s|^Exec=/usr/bin/brave-browser|Exec=/usr/bin/brave-browser --password-store=basic|
+            }
+            /^Exec=\/usr\/bin\/brave-origin-stable( |$)/ {
+                /--password-store=basic/! s|^Exec=/usr/bin/brave-origin-stable|Exec=/usr/bin/brave-origin-stable --password-store=basic|
+            }
+            /^Exec=\/usr\/bin\/brave-origin( |$)/ {
+                /--password-store=basic/! s|^Exec=/usr/bin/brave-origin|Exec=/usr/bin/brave-origin --password-store=basic|
+            }
+        ' "$dst_desktop"
+    done
 
     update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
     XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config" XDG_CURRENT_DESKTOP=niri XDG_MENU_PREFIX=plasma- \
         kbuildsycoca6 --noincremental 2>/dev/null || true
-    ok "Brave configurado para no invocar gcr-prompter"
+    ok "Brave/Brave Origin configurados para no invocar gcr-prompter"
 }
 
 configure_xdg_desktop_portal_runtime() {
@@ -870,17 +904,96 @@ ENVEOF
 
     cat > "$HOME/.local/bin/honey" <<'EOF'
 #!/usr/bin/env bash
-if [ -f "$HOME/.config/niri/env.sh" ]; then
+# Honey launches apps with Quartz-like text rendering across Niri, KDE and GNOME.
+desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
+desktop_probe="${desktop_probe,,}"
+
+if { [[ "$desktop_probe" == *niri* ]] || [ "${HONEY_USE_NIRI_ENV:-0}" = "1" ]; } && [ -f "$HOME/.config/niri/env.sh" ]; then
     source "$HOME/.config/niri/env.sh"
 fi
-export XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config"
-export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
+
+desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
+desktop_probe="${desktop_probe,,}"
+
+if [ -z "${HONEY_XDG_CONFIG_HOME:-}" ]; then
+    if [[ "$desktop_probe" == *niri* ]] && [ -d "$HOME/.config/niri/xdg-config" ]; then
+        HONEY_XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config"
+    else
+        HONEY_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+        if [ "$HONEY_XDG_CONFIG_HOME" = "$HOME/.config/niri/xdg-config" ]; then
+            HONEY_XDG_CONFIG_HOME="$HOME/.config"
+        fi
+    fi
+fi
+
+HONEY_CHROMIUM_FLAGS="--disable-lcd-text --font-render-hinting=none --ozone-platform-hint=auto --enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer --password-store=basic"
+
+export XDG_CONFIG_HOME="$HONEY_XDG_CONFIG_HOME"
+if [[ "$desktop_probe" == *kde* || "$desktop_probe" == *plasma* || "$desktop_probe" == *niri* ]]; then
+    export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
+elif [[ "$desktop_probe" == *gnome* && "${XDG_MENU_PREFIX:-}" = "plasma-" ]]; then
+    unset XDG_MENU_PREFIX
+fi
 export XDG_DATA_DIRS="${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
-export HONEY_RENDER=1
-export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
+
+export HONEY_RENDER=quartz
+export HONEY_RENDER_PROFILE=quartz
+export FONTCONFIG_FILE="${FONTCONFIG_FILE:-/etc/fonts/fonts.conf}"
+export FONTCONFIG_PATH="${FONTCONFIG_PATH:-/etc/fonts}"
 export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 truetype:interpreter-version=40 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
+
+if [ "${HONEY_KEEP_IDE_ENV:-0}" != "1" ]; then
+    unset ELECTRON_RUN_AS_NODE
+    unset ELECTRON_NO_ATTACH_CONSOLE
+    unset VSCODE_CLI
+    unset VSCODE_IPC_HOOK_CLI
+    unset VSCODE_ESM_ENTRYPOINT
+    unset VSCODE_HANDLES_UNCAUGHT_ERRORS
+    unset VSCODE_NLS_CONFIG
+    unset CHROME_DESKTOP
+    unset ${!VSCODE_@}
+fi
+
+if [[ "$desktop_probe" == *kde* || "$desktop_probe" == *plasma* || "$desktop_probe" == *niri* ]]; then
+    export GTK_THEME="${GTK_THEME:-Breeze-Dark}"
+fi
+export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
+export GDK_DPI_SCALE="${GDK_DPI_SCALE:-1}"
+export GTK_OVERLAY_SCROLLING="${GTK_OVERLAY_SCROLLING:-1}"
+unset GDK_SCALE
+
+if [[ "$desktop_probe" == *kde* || "$desktop_probe" == *plasma* || "$desktop_probe" == *niri* ]]; then
+    export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
+    export QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}"
+elif [[ "$desktop_probe" == *gnome* ]]; then
+    if [ -n "${QT_QPA_PLATFORMTHEME:-}" ]; then
+        export QT_QPA_PLATFORMTHEME
+    fi
+    unset QT_STYLE_OVERRIDE
+fi
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+export QT_ENABLE_HIGHDPI_SCALING=0
+export QT_FONT_DPI=96
+export QT_SCALE_FACTOR_ROUNDING_POLICY="${QT_SCALE_FACTOR_ROUNDING_POLICY:-PassThrough}"
 export QT_QPA_PLATFORM="wayland;xcb"
 unset QT_WAYLAND_DECORATION
+
+export ELECTRON_USE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
+export CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
+export CHROME_FLAGS="${CHROME_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
+export CHROMIUM_USER_FLAGS="${CHROMIUM_USER_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
+export ELECTRON_USER_FLAGS="${ELECTRON_USER_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
+export MOZ_ENABLE_WAYLAND=1
+export MOZ_USE_XINPUT2=1
+export WINIT_UNIX_BACKEND="${WINIT_UNIX_BACKEND:-wayland}"
+
+case "$(basename -- "${1:-}")" in
+    brave|brave-browser|brave-origin|chromium|chromium-browser|chrome|google-chrome|google-chrome-stable|microsoft-edge|microsoft-edge-stable|opera|vivaldi|vivaldi-stable|electron|codium|code|vscodium|VSCodium|discord|Discord|zen|zen-browser|antigravity-ide)
+        exec "$1" $HONEY_CHROMIUM_FLAGS "${@:2}"
+        ;;
+esac
+
 exec "$@"
 EOF
     chmod +x "$HOME/.local/bin/honey"
@@ -973,14 +1086,19 @@ EOF
 </fontconfig>
 EOF
 
-    for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
+    for gtk_dir in \
+        "$HOME/.config/gtk-3.0" \
+        "$HOME/.config/gtk-4.0" \
+        "$HOME/.config/niri/xdg-config/gtk-3.0" \
+        "$HOME/.config/niri/xdg-config/gtk-4.0"; do
+        mkdir -p "$gtk_dir"
         local gtk_file="$gtk_dir/settings.ini"
         touch "$gtk_file"
         grep -q '^\[Settings\]' "$gtk_file" || sed -i '1i[Settings]' "$gtk_file"
         _set_ini_key "$gtk_file" "gtk-application-prefer-dark-theme" "true"
         _set_ini_key "$gtk_file" "gtk-decoration-layout" ":maximize,close"
         _set_ini_key "$gtk_file" "gtk-enable-animations" "true"
-        _set_ini_key "$gtk_file" "gtk-font-name" "Inter,  11"
+        _set_ini_key "$gtk_file" "gtk-font-name" "Inter Medium 11"
         _set_ini_key "$gtk_file" "gtk-icon-theme-name" "breeze-dark"
         _set_ini_key "$gtk_file" "gtk-theme-name" "Breeze-Dark"
         _set_ini_key "$gtk_file" "gtk-xft-antialias" "1"
@@ -997,6 +1115,11 @@ EOF
         _set_ini_key "$kde_file" "XftAntialias" "true"
         _set_ini_key "$kde_file" "XftHintStyle" "hintnone"
         _set_ini_key "$kde_file" "XftSubPixel" "none"
+        _set_ini_key "$kde_file" "font" "Inter,10.5,-1,5,500,0,0,0,0,0,0,0,0,0,0,1,Medium"
+        _set_ini_key "$kde_file" "menuFont" "Inter,10,-1,5,500,0,0,0,0,0,0,0,0,0,0,1,Medium"
+        _set_ini_key "$kde_file" "smallestReadableFont" "Inter,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+        _set_ini_key "$kde_file" "toolBarFont" "Inter,10.5,-1,5,500,0,0,0,0,0,0,0,0,0,0,1,Medium"
+        _set_ini_key "$kde_file" "activeFont" "Inter,10.5,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"
     done
 
     cat > "$HOME/.config/xsettingsd/xsettingsd.conf" <<'EOF'
@@ -1018,7 +1141,7 @@ Gtk/CursorThemeSize 24
 Gtk/CursorThemeName "breeze_cursors"
 Net/SoundThemeName "ocean"
 Net/IconThemeName "breeze-dark"
-Gtk/FontName "Inter,  11"
+Gtk/FontName "Inter Medium 11"
 EOF
 
     mkdir -p "$HOME/.config/niri/xdg-config"
@@ -1028,18 +1151,120 @@ EOF
     fc-cache -r "$HOME/.local/share/fonts" "$HOME/.fonts" 2>/dev/null || fc-cache -r || true
     gsettings set org.gnome.desktop.interface font-antialiasing 'grayscale' 2>/dev/null || true
     gsettings set org.gnome.desktop.interface font-hinting 'none' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface font-name 'Inter Medium 11' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface document-font-name 'Inter 11' 2>/dev/null || true
 
-    for conf in chromium chrome electron brave brave-browser; do
-        cat > "$HOME/.config/${conf}-flags.conf" <<'EOF'
+    for conf in chromium chrome electron brave brave-browser brave-origin code codium vscode-oss discord antigravity-ide; do
+        for flags_dir in "$HOME/.config" "$HOME/.config/niri/xdg-config"; do
+            mkdir -p "$flags_dir"
+            cat > "$flags_dir/${conf}-flags.conf" <<'EOF'
 --disable-lcd-text
 --font-render-hinting=none
 --ozone-platform-hint=auto
---enable-features=WebRTCPipeWireCapturer
+--enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer
 --password-store=basic
 EOF
+        done
     done
 
     ok "Honey runtime actualizado"
+}
+
+configure_launcher_quartz_runtime() {
+    echo "Aplicando material translúcido y blur contenido al AppLauncher..."
+
+    local launcher_qml
+    for launcher_qml in \
+        "$HOME/.config/quickshell/unified/AppLauncherDialog.qml" \
+        "$HOME/.config/niri/xdg-config/quickshell/unified/AppLauncherDialog.qml"; do
+        [[ -f "$launcher_qml" ]] || continue
+        python3 - "$launcher_qml" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    text = f.read()
+
+text = re.sub(r"implicitWidth:\s*\d+", "implicitWidth: 640", text, count=1)
+text = re.sub(r"implicitHeight:\s*\d+", "implicitHeight: 526", text, count=1)
+
+text = re.sub(
+    r"readonly property color quartzMaterial: root\.blurEnabled\n\s*\? [^\n]+\n\s*: [^\n]+",
+    'readonly property color quartzMaterial: root.blurEnabled\n'
+    '        ? (root.isLightTheme ? Qt.rgba(0.96, 0.97, 0.98, 0.62) : Qt.rgba(0.045, 0.052, 0.056, 0.58))\n'
+    '        : (root.isLightTheme ? Qt.rgba(0.95, 0.96, 0.97, 0.96) : Qt.rgba(0.070, 0.075, 0.080, 0.96))',
+    text,
+    count=1,
+)
+text = re.sub(
+    r"readonly property color quartzStroke: [^\n]+",
+    "readonly property color quartzStroke: root.isLightTheme ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(1, 1, 1, 0.18)",
+    text,
+    count=1,
+)
+text = re.sub(
+    r"readonly property color quartzStrokeDark: [^\n]+",
+    "readonly property color quartzStrokeDark: root.isLightTheme ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(0, 0, 0, 0.34)",
+    text,
+    count=1,
+)
+
+contained_shadow = '''        Rectangle {
+            id: containedShadow
+            anchors.fill: dialogBox
+            radius: dialogBox.radius
+            color: "transparent"
+            border.width: 1
+            border.color: root.isLightTheme ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.62)
+            opacity: 0.72
+            z: 0
+        }
+
+        // Contenedor principal del diálogo (material tipo Quartz con blur del compositor)'''
+
+text = re.sub(
+    r"\n        DropShadow \{.*?\n        DropShadow \{.*?\n        \}\n\n        // Contenedor principal del diálogo \(material tipo Quartz con blur del compositor\)",
+    "\n" + contained_shadow,
+    text,
+    count=1,
+    flags=re.S,
+)
+
+text = re.sub(
+    r"            width:\s*\d+\n            height:\s*\d+\n            anchors\.centerIn: parent\n",
+    "            anchors.fill: parent\n",
+    text,
+    count=1,
+)
+text = text.replace(
+    "            border.width: 1\n            z: 1",
+    "            border.width: 1\n            clip: true\n            z: 1",
+    1,
+)
+text = text.replace("            opacity: root.isLightTheme ? 0.74 : 0.92", "            opacity: root.isLightTheme ? 0.62 : 0.72", 1)
+text = text.replace(
+    "GradientStop { position: 0.0; color: root.isLightTheme ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(1, 1, 1, 0.16) }",
+    "GradientStop { position: 0.0; color: root.isLightTheme ? Qt.rgba(1, 1, 1, 0.54) : Qt.rgba(1, 1, 1, 0.11) }",
+    1,
+)
+text = text.replace(
+    "GradientStop { position: 0.58; color: root.isLightTheme ? Qt.rgba(1, 1, 1, 0.17) : Qt.rgba(1, 1, 1, 0.040) }",
+    "GradientStop { position: 0.58; color: root.isLightTheme ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.028) }",
+    1,
+)
+text = text.replace(
+    "GradientStop { position: 1.0; color: root.isLightTheme ? Qt.rgba(0, 0, 0, 0.050) : Qt.rgba(0, 0, 0, 0.22) }",
+    "GradientStop { position: 1.0; color: root.isLightTheme ? Qt.rgba(0, 0, 0, 0.040) : Qt.rgba(0, 0, 0, 0.16) }",
+    1,
+)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(text)
+PY
+    done
+
+    ok "AppLauncher actualizado con blur contenido y material translúcido"
 }
 
 _set_ini_key() {
@@ -1287,12 +1512,16 @@ env_line = (
     'systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP DISPLAY NO_AT_BRIDGE NIRI_SOCKET '
     'XDG_CONFIG_HOME XDG_MENU_PREFIX XDG_DATA_DIRS XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS '
     'QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM GTK_THEME XCURSOR_THEME XCURSOR_SIZE XCURSOR_PATH '
-    'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP QML_FORCE_DISK_CACHE ELECTRON_OZONE_PLATFORM_HINT && '
+    'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP QML_FORCE_DISK_CACHE FREETYPE_PROPERTIES '
+    'ELECTRON_USE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT CHROMIUM_FLAGS CHROME_FLAGS CHROMIUM_USER_FLAGS ELECTRON_USER_FLAGS '
+    'MOZ_ENABLE_WAYLAND MOZ_USE_XINPUT2 HONEY_RENDER HONEY_RENDER_PROFILE && '
     'hash dbus-update-activation-environment 2>/dev/null && '
     'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri DISPLAY NO_AT_BRIDGE '
     'QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM GTK_THEME XCURSOR_THEME XCURSOR_SIZE XCURSOR_PATH '
     'GDK_DPI_SCALE QT_FONT_DPI KDED_FIRST_STARTUP XDG_CONFIG_HOME XDG_MENU_PREFIX XDG_DATA_DIRS '
-    'XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS QML_FORCE_DISK_CACHE ELECTRON_OZONE_PLATFORM_HINT"'
+    'XDG_SESSION_ID DBUS_SESSION_BUS_ADDRESS QML_FORCE_DISK_CACHE FREETYPE_PROPERTIES '
+    'ELECTRON_USE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT CHROMIUM_FLAGS CHROME_FLAGS CHROMIUM_USER_FLAGS ELECTRON_USER_FLAGS '
+    'MOZ_ENABLE_WAYLAND MOZ_USE_XINPUT2 HONEY_RENDER HONEY_RENDER_PROFILE"'
 )
 
 if re.search(r'^spawn-sh-at-startup "source ~/.config/niri/env\.sh && systemctl --user import-environment .*$',
@@ -1789,6 +2018,7 @@ main() {
     configure_autotiler_and_polkit
     configure_niri_runtime_config
     apply_recent_runtime_fixes
+    configure_launcher_quartz_runtime
     sync_cursor_theme_runtime
     configure_resource_saving_services
     configure_audio
@@ -5886,4 +6116,3 @@ fC3iB5xTBQ32V1mNrP5E5DtF4HTMbvXw7BGk4xRB1hbw/eDaHfnXLv4UmIHlzUXU52Kg2TG6hgYd
 6cvB8L4goGUz2uLDCw0oWmkOvujc0jmgP52Uikc9POuCl1Kmwl/tZ4y2uEs61UqBXLoXwU038ke9
 gc+ut9k1+h/7HP6sneLZKHRQGWh2X67ZCgzsWvXBEE7WT3XllyZfzLqYbjHP8+y5wkUa0g8/Obts
 wEpdK1iSJc6Vm4zzjBYbkJXCUJdBHJbP8lk+y2f5LJ9P9/x/9YVRuQC4FQA=
-
