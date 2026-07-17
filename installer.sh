@@ -684,33 +684,395 @@ EOF
     ok "Configuración de fontconfig estilo Honey aplicada"
 }
 
+write_honey_script() {
+    cat > "$HOME/.local/bin/honey" <<'EOF'
+#!/usr/bin/env bash
+# ==============================================================================
+# Honey - Lanzador Premium de Aplicaciones con Renderizado de Fuente macOS Quartz
+# ==============================================================================
+# Características:
+#   - Renderizado en escala de grises sin subpíxeles/RGB (geometría de curva pura).
+#   - Oscurecimiento de trazos (stem darkening) para mayor espesor y suavidad.
+#   - Promoción dinámica de fuentes a peso "Medium" para mejorar la legibilidad.
+#   - Mapeo automático de fuentes principales (Inter / JetBrains Mono).
+#   - Compatibilidad completa con entornos Wayland, Niri, KDE y GNOME.
+#
+# Autor: Antigravity IDE Agent
+# Versión: 1.1.0
+# ==============================================================================
+
+# Ajustes estrictos de ejecución para Bash
+set -euo pipefail
+IFS=$'
+	'
+
+# --- Configuración por Defecto ---
+HONEY_VERSION="1.1.0"
+DEFAULT_UI_FONT="Inter"
+DEFAULT_UI_WEIGHT="medium"      # Hace la letra de interfaz algo gruesa
+DEFAULT_MONO_FONT="JetBrains Mono"
+DEFAULT_MONO_WEIGHT="medium"    # Hace la letra de código algo gruesa
+
+# --- Funciones de Registro (Logging) ---
+log_info() {
+    echo -e "[1;34m[Honey INFO][0m $*" >&2
+}
+
+log_success() {
+    echo -e "[1;32m[Honey OK][0m $*" >&2
+}
+
+log_error() {
+    echo -e "[1;31m[Honey ERROR][0m $*" >&2
+}
+
+# --- Ayuda del Script ---
+show_help() {
+    cat <<HELP_EOF
+Uso: $(basename "$0") [OPCIONES] [EJECUTABLE] [ARGUMENTOS...]
+
+Lanza aplicaciones aplicando un perfil de diseño elegante, presentable y con un
+renderizado de fuentes suavizado e imponente como el motor Quartz de macOS.
+
+Opciones:
+  -h, --help           Muestra esta pantalla de ayuda y sale.
+  -v, --version        Muestra la versión de Honey y sale.
+  --ui-font NAME       Especifica la fuente para interfaces (defecto: $DEFAULT_UI_FONT).
+  --ui-weight WEIGHT   Peso para la interfaz (defecto: $DEFAULT_UI_WEIGHT).
+  --mono-font NAME     Especifica la fuente monoespaciada (defecto: $DEFAULT_MONO_FONT).
+  --mono-weight WEIGHT Peso para la fuente monoespaciada (defecto: $DEFAULT_MONO_WEIGHT).
+
+Variables de Entorno soportadas:
+  HONEY_UI_FONT        Sobrescribe la fuente de interfaz de usuario.
+  HONEY_UI_WEIGHT      Sobrescribe el peso de interfaz (ej. regular, medium, semibold).
+  HONEY_MONO_FONT      Sobrescribe la fuente monoespaciada de código.
+  HONEY_MONO_WEIGHT    Sobrescribe el peso monoespaciado (ej. regular, medium, semibold).
+  HONEY_USE_NIRI_ENV   Fuerza la importación de env.sh de Niri (1 para activar).
+  HONEY_KEEP_IDE_ENV   Preserva las variables de entorno de VSCode/Electron (1 para activar).
+
+Ejemplos:
+  $(basename "$0") antigravity-ide
+  $(basename "$0") --mono-weight semibold vscodium
+HELP_EOF
+}
+
+show_version() {
+    echo "Honey v$HONEY_VERSION - Renderizado Quartz para Linux"
+}
+
+# --- Detección del Entorno de Escritorio ---
+detect_desktop() {
+    local desktop_probe
+    desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
+    desktop_probe="${desktop_probe,,}"
+    echo "$desktop_probe"
+}
+
+# --- Generación Dinámica de Fontconfig (Quartz Style) ---
+generate_fontconfig() {
+    local config_dir="$1"
+    local fontconfig_file="$2"
+    local ui_font="${HONEY_UI_FONT:-$DEFAULT_UI_FONT}"
+    local ui_weight="${HONEY_UI_WEIGHT:-$DEFAULT_UI_WEIGHT}"
+    local mono_font="${HONEY_MONO_FONT:-$DEFAULT_MONO_FONT}"
+    local mono_weight="${HONEY_MONO_WEIGHT:-$DEFAULT_MONO_WEIGHT}"
+
+    log_info "Generando configuración Fontconfig Quartz..."
+    log_info "  - Fuente Interfaz: $ui_font ($ui_weight)"
+    log_info "  - Fuente Código: $mono_font ($mono_weight)"
+
+    mkdir -p "$config_dir"
+
+    # Escribir el archivo xml de fontconfig
+    cat <<FC_EOF > "$fontconfig_file"
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <!-- Incluir la configuración principal del sistema para rutas físicas de fuentes -->
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+
+  <!-- ===================================================================== -->
+  <!-- Perfil de Renderizado Estilo macOS Quartz (Escala de grises pura)     -->
+  <!-- ===================================================================== -->
+  <match target="font">
+    <!-- Forzar suavizado de bordes (Antialiasing) -->
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+    <!-- Desactivar Hinting para obtener contornos con geometría exacta y redondeada -->
+    <edit name="hinting" mode="assign"><bool>false</bool></edit>
+    <edit name="hintstyle" mode="assign"><const>hintnone</const></edit>
+    <edit name="autohint" mode="assign"><bool>false</bool></edit>
+    <!-- Deshabilitar subpixel RGB para evitar franjas de color y verse premium -->
+    <edit name="rgba" mode="assign"><const>none</const></edit>
+    <edit name="lcdfilter" mode="assign"><const>lcdnone</const></edit>
+    <!-- Ignorar mapas de bits incrustados -->
+    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
+    <!-- Asegurar escalabilidad vectorial -->
+    <edit name="scalable" mode="assign"><bool>true</bool></edit>
+  </match>
+
+  <!-- Fijar DPI de renderizado consistente -->
+  <match target="pattern">
+    <edit name="dpi" mode="assign"><double>96</double></edit>
+  </match>
+
+  <!-- Mapeo de glifos auxiliares (FontAwesome) para barras de estado e IDEs -->
+  <match target="pattern">
+    <test name="family" compare="eq"><string>Font Awesome 6 Free</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>FontAwesome</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>Font Awesome 6 Brands</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>FontAwesome</string></edit>
+  </match>
+
+  <!-- ===================================================================== -->
+  <!-- Mapeos y Pesos para Fuentes de Interfaz (Sans-Serif y del Sistema)     -->
+  <!-- ===================================================================== -->
+FC_EOF
+
+    # Mapear familias comunes a nuestra fuente de UI elegida
+    local ui_families=("sans-serif" "system-ui" "ui-sans-serif" "-apple-system" "BlinkMacSystemFont" "Arial" "Helvetica" "Roboto")
+    for fam in "${ui_families[@]}"; do
+        cat <<FC_EOF2 >> "$fontconfig_file"
+  <match target="pattern">
+    <test name="family" compare="eq"><string>$fam</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>$ui_font</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>$fam</string></test>
+    <test name="weight" compare="less"><const>$ui_weight</const></test>
+    <edit name="weight" mode="assign"><const>$ui_weight</const></edit>
+  </match>
+FC_EOF2
+    done
+
+    # Mapeo y Pesos para Fuentes de Código (Monospace)
+    cat <<FC_EOF3 >> "$fontconfig_file"
+  <match target="pattern">
+    <test name="family" compare="eq"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>$mono_font</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>monospace</string></test>
+    <test name="weight" compare="less"><const>$mono_weight</const></test>
+    <edit name="weight" mode="assign"><const>$mono_weight</const></edit>
+  </match>
+
+  <!-- Fallbacks para CJK y Emojis cuando la fuente principal no tenga el caracter -->
+  <match target="pattern">
+    <test name="family" compare="eq"><string>$ui_font</string></test>
+    <edit name="family" mode="append" binding="strong">
+      <string>Noto Sans CJK SC</string>
+      <string>Noto Sans CJK TC</string>
+      <string>Noto Sans CJK JP</string>
+      <string>Noto Color Emoji</string>
+    </edit>
+  </match>
+  <match target="pattern">
+    <test name="family" compare="eq"><string>$mono_font</string></test>
+    <edit name="family" mode="append" binding="strong">
+      <string>Noto Sans Mono CJK SC</string>
+      <string>Noto Sans Mono CJK JP</string>
+      <string>Noto Color Emoji</string>
+    </edit>
+  </match>
+
+</fontconfig>
+FC_EOF3
+    log_success "Archivo de configuración escrito correctamente en: $fontconfig_file"
+}
+
+# --- Punto de Entrada Principal ---
+main() {
+    # Inicializar argumentos editables
+    local ui_font=""
+    local ui_weight=""
+    local mono_font=""
+    local mono_weight=""
+
+    # Procesar Argumentos CLI de Honey
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -v|--version)
+                show_version
+                exit 0
+                ;;
+            --ui-font)
+                ui_font="$2"
+                shift 2
+                ;;
+            --ui-weight)
+                ui_weight="$2"
+                shift 2
+                ;;
+            --mono-font)
+                mono_font="$2"
+                shift 2
+                ;;
+            --mono-weight)
+                mono_weight="$2"
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                log_error "Opción desconocida: $1"
+                show_help
+                exit 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # Aplicar variables locales si se pasaron por parámetros
+    [[ -n "$ui_font" ]] && export HONEY_UI_FONT="$ui_font"
+    [[ -n "$ui_weight" ]] && export HONEY_UI_WEIGHT="$ui_weight"
+    [[ -n "$mono_font" ]] && export HONEY_MONO_FONT="$mono_font"
+    [[ -n "$mono_weight" ]] && export HONEY_MONO_WEIGHT="$mono_weight"
+
+    # Verificar que se reciba un comando a ejecutar
+    if [[ $# -lt 1 ]]; then
+        log_error "No se especificó ninguna aplicación para ejecutar."
+        show_help
+        exit 1
+    fi
+
+    # Detectar el escritorio activo
+    local desktop
+    desktop=$(detect_desktop)
+
+    # 1. Cargar el entorno de Niri si es necesario
+    if { [[ "$desktop" == *niri* ]] || [ "${HONEY_USE_NIRI_ENV:-0}" = "1" ]; } && [ -f "$HOME/.config/niri/env.sh" ]; then
+        # Cargar variables de entorno guardadas
+        # shellcheck disable=SC1090
+        source "$HOME/.config/niri/env.sh"
+        # Redetectar tras cargar el script de entorno
+        desktop=$(detect_desktop)
+    fi
+
+    # 2. Configurar directorio base XDG
+    local honey_xdg_config
+    if [ -z "${HONEY_XDG_CONFIG_HOME:-}" ]; then
+        if [[ "$desktop" == *niri* ]] && [ -d "$HOME/.config/niri/xdg-config" ]; then
+            honey_xdg_config="$HOME/.config/niri/xdg-config"
+        else
+            honey_xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}"
+            if [ "$honey_xdg_config" = "$HOME/.config/niri/xdg-config" ]; then
+                honey_xdg_config="$HOME/.config"
+            fi
+        fi
+    else
+        honey_xdg_config="$HONEY_XDG_CONFIG_HOME"
+    fi
+    export XDG_CONFIG_HOME="$honey_xdg_config"
+
+    # 3. Preparar directorios y generar el Fontconfig local
+    local honey_fc_dir="$honey_xdg_config/honey"
+    local honey_fc_file="$honey_fc_dir/fonts.conf"
+    generate_fontconfig "$honey_fc_dir" "$honey_fc_file"
+    export FONTCONFIG_FILE="$honey_fc_file"
+    export FONTCONFIG_PATH="${FONTCONFIG_PATH:-/etc/fonts}"
+
+    # 4. Configurar FreeType con Stem Darkening óptimo (Quartz Look)
+    export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-truetype:interpreter-version=40 cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
+
+    # 5. Configurar directorios de librerías personalizadas (si existen)
+    local honey_lib_dir="$HOME/.config/honey/lib"
+    if [ -d "$honey_lib_dir" ]; then
+        export LD_LIBRARY_PATH="$honey_lib_dir:${LD_LIBRARY_PATH:-}"
+    fi
+
+    # 6. Flags para navegadores Chromium y aplicaciones Electron (Evitar antialias subpixel/LCD y forzar Wayland)
+    local honey_chromium_flags="--disable-lcd-text --font-render-hinting=none --ozone-platform-hint=auto --enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer --password-store=basic"
+    export CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$honey_chromium_flags}"
+    export CHROME_FLAGS="${CHROME_FLAGS:-$honey_chromium_flags}"
+    export CHROMIUM_USER_FLAGS="${CHROMIUM_USER_FLAGS:-$honey_chromium_flags}"
+    export ELECTRON_USER_FLAGS="${ELECTRON_USER_FLAGS:-$honey_chromium_flags}"
+    export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
+    export ELECTRON_USE_WAYLAND=1
+
+    # 7. Forzar Wayland en Toolkits comunes
+    export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
+    export GDK_DPI_SCALE="${GDK_DPI_SCALE:-1}"
+    export GTK_OVERLAY_SCROLLING="${GTK_OVERLAY_SCROLLING:-1}"
+    unset GDK_SCALE
+
+    export QT_AUTO_SCREEN_SCALE_FACTOR=0
+    export QT_ENABLE_HIGHDPI_SCALING=0
+    export QT_FONT_DPI=96
+    export QT_SCALE_FACTOR_ROUNDING_POLICY="${QT_SCALE_FACTOR_ROUNDING_POLICY:-PassThrough}"
+    export QT_QPA_PLATFORM="wayland;xcb"
+    unset QT_WAYLAND_DECORATION
+
+    # Ajustar temas según el escritorio
+    if [[ "$desktop" == *kde* || "$desktop" == *plasma* || "$desktop" == *niri* ]]; then
+        export GTK_THEME="${GTK_THEME:-Breeze-Dark}"
+        export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
+        export QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}"
+        export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
+    elif [[ "$desktop" == *gnome* ]]; then
+        if [ "${XDG_MENU_PREFIX:-}" = "plasma-" ]; then
+            unset XDG_MENU_PREFIX
+        fi
+        if [ -n "${QT_QPA_PLATFORMTHEME:-}" ]; then
+            export QT_QPA_PLATFORMTHEME
+        fi
+        unset QT_STYLE_OVERRIDE
+    fi
+
+    export XDG_DATA_DIRS="${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
+    export MOZ_ENABLE_WAYLAND=1
+    export MOZ_USE_XINPUT2=1
+    export WINIT_UNIX_BACKEND="${WINIT_UNIX_BACKEND:-wayland}"
+
+    # 8. Limpiar el entorno heredado de VS Code para evitar conflictos si se lanza otro IDE
+    if [ "${HONEY_KEEP_IDE_ENV:-0}" != "1" ]; then
+        unset ELECTRON_RUN_AS_NODE
+        unset ELECTRON_NO_ATTACH_CONSOLE
+        unset VSCODE_CLI
+        unset VSCODE_IPC_HOOK_CLI
+        unset VSCODE_ESM_ENTRYPOINT
+        unset VSCODE_HANDLES_UNCAUGHT_ERRORS
+        unset VSCODE_NLS_CONFIG
+        unset CHROME_DESKTOP
+        # Eliminar cualquier variable que comience por VSCODE_
+        unset "${!VSCODE_@}"
+    fi
+
+    # 9. Resolver ejecutable base si coincide con Electron/Chrome para inyectar flags de línea de comando
+    local base_exec
+    base_exec=$(basename -- "${1}")
+    case "$base_exec" in
+        brave|brave-browser|brave-origin|chromium|chromium-browser|chrome|google-chrome|google-chrome-stable|microsoft-edge|microsoft-edge-stable|opera|vivaldi|vivaldi-stable|electron|codium|code|vscodium|VSCodium|discord|Discord|zen|zen-browser|antigravity-ide)
+            log_info "Lanzando wrapper de Chromium/Electron: $1"
+            # shellcheck disable=SC2086
+            exec "$1" $honey_chromium_flags "${@:2}"
+            ;;
+    esac
+
+    # Ejecución estándar para cualquier otra aplicación
+    log_info "Lanzando aplicación estándar: $1"
+    exec "$@"
+}
+
+# Ejecutar el punto de entrada principal
+main "$@"
+EOF
+    chmod +x "$HOME/.local/bin/honey"
+}
+
 configure_honey_core() {
     echo "Configurando Honey Core..."
     mkdir -p "$HOME/.local/bin"
-    cat > "$HOME/.local/bin/honey" <<'EOF'
-#!/usr/bin/env bash
-desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
-desktop_probe="${desktop_probe,,}"
-if { [[ "$desktop_probe" == *niri* ]] || [ "${HONEY_USE_NIRI_ENV:-0}" = "1" ]; } && [ -f "$HOME/.config/niri/env.sh" ]; then
-    source "$HOME/.config/niri/env.sh"
-fi
-export HONEY_RENDER=quartz
-export HONEY_RENDER_PROFILE=quartz
-export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-truetype:interpreter-version=40 cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
-HONEY_LIB_DIR="$HOME/.config/honey/lib"
-if [ -d "$HONEY_LIB_DIR" ]; then
-    export LD_LIBRARY_PATH="$HONEY_LIB_DIR:$LD_LIBRARY_PATH"
-fi
-export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
-export QT_QPA_PLATFORM="wayland;xcb"
-export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
-export QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}"
-export ELECTRON_USE_WAYLAND=1
-export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
-export MOZ_ENABLE_WAYLAND=1
-exec "$@"
-EOF
-    chmod +x "$HOME/.local/bin/honey"
+    write_honey_script
 
     mkdir -p "$HOME/.config/fontconfig/conf.d"
     cat > "$HOME/.config/fontconfig/conf.d/99-honey-render.conf" <<'EOF'
@@ -902,101 +1264,7 @@ export QT_QPA_PLATFORM=wayland-egl
 export QML_FORCE_DISK_CACHE=1
 ENVEOF
 
-    cat > "$HOME/.local/bin/honey" <<'EOF'
-#!/usr/bin/env bash
-# Honey launches apps with Quartz-like text rendering across Niri, KDE and GNOME.
-desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
-desktop_probe="${desktop_probe,,}"
-
-if { [[ "$desktop_probe" == *niri* ]] || [ "${HONEY_USE_NIRI_ENV:-0}" = "1" ]; } && [ -f "$HOME/.config/niri/env.sh" ]; then
-    source "$HOME/.config/niri/env.sh"
-fi
-
-desktop_probe="${XDG_CURRENT_DESKTOP:-} ${XDG_SESSION_DESKTOP:-} ${DESKTOP_SESSION:-}"
-desktop_probe="${desktop_probe,,}"
-
-if [ -z "${HONEY_XDG_CONFIG_HOME:-}" ]; then
-    if [[ "$desktop_probe" == *niri* ]] && [ -d "$HOME/.config/niri/xdg-config" ]; then
-        HONEY_XDG_CONFIG_HOME="$HOME/.config/niri/xdg-config"
-    else
-        HONEY_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-        if [ "$HONEY_XDG_CONFIG_HOME" = "$HOME/.config/niri/xdg-config" ]; then
-            HONEY_XDG_CONFIG_HOME="$HOME/.config"
-        fi
-    fi
-fi
-
-HONEY_CHROMIUM_FLAGS="--disable-lcd-text --font-render-hinting=none --ozone-platform-hint=auto --enable-features=UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer --password-store=basic"
-
-export XDG_CONFIG_HOME="$HONEY_XDG_CONFIG_HOME"
-if [[ "$desktop_probe" == *kde* || "$desktop_probe" == *plasma* || "$desktop_probe" == *niri* ]]; then
-    export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
-elif [[ "$desktop_probe" == *gnome* && "${XDG_MENU_PREFIX:-}" = "plasma-" ]]; then
-    unset XDG_MENU_PREFIX
-fi
-export XDG_DATA_DIRS="${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
-
-export HONEY_RENDER=quartz
-export HONEY_RENDER_PROFILE=quartz
-export FONTCONFIG_FILE="${FONTCONFIG_FILE:-/etc/fonts/fonts.conf}"
-export FONTCONFIG_PATH="${FONTCONFIG_PATH:-/etc/fonts}"
-export FREETYPE_PROPERTIES="${FREETYPE_PROPERTIES:-cff:no-stem-darkening=0 type1:no-stem-darkening=0 t1cid:no-stem-darkening=0 autofitter:no-stem-darkening=0 truetype:interpreter-version=40 cff:darkening-parameters=500,360,1000,240,1500,120,2000,0 autofitter:darkening-parameters=500,360,1000,240,1500,120,2000,0}"
-
-if [ "${HONEY_KEEP_IDE_ENV:-0}" != "1" ]; then
-    unset ELECTRON_RUN_AS_NODE
-    unset ELECTRON_NO_ATTACH_CONSOLE
-    unset VSCODE_CLI
-    unset VSCODE_IPC_HOOK_CLI
-    unset VSCODE_ESM_ENTRYPOINT
-    unset VSCODE_HANDLES_UNCAUGHT_ERRORS
-    unset VSCODE_NLS_CONFIG
-    unset CHROME_DESKTOP
-    unset ${!VSCODE_@}
-fi
-
-if [[ "$desktop_probe" == *kde* || "$desktop_probe" == *plasma* || "$desktop_probe" == *niri* ]]; then
-    export GTK_THEME="${GTK_THEME:-Breeze-Dark}"
-fi
-export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
-export GDK_DPI_SCALE="${GDK_DPI_SCALE:-1}"
-export GTK_OVERLAY_SCROLLING="${GTK_OVERLAY_SCROLLING:-1}"
-unset GDK_SCALE
-
-if [[ "$desktop_probe" == *kde* || "$desktop_probe" == *plasma* || "$desktop_probe" == *niri* ]]; then
-    export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
-    export QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}"
-elif [[ "$desktop_probe" == *gnome* ]]; then
-    if [ -n "${QT_QPA_PLATFORMTHEME:-}" ]; then
-        export QT_QPA_PLATFORMTHEME
-    fi
-    unset QT_STYLE_OVERRIDE
-fi
-export QT_AUTO_SCREEN_SCALE_FACTOR=0
-export QT_ENABLE_HIGHDPI_SCALING=0
-export QT_FONT_DPI=96
-export QT_SCALE_FACTOR_ROUNDING_POLICY="${QT_SCALE_FACTOR_ROUNDING_POLICY:-PassThrough}"
-export QT_QPA_PLATFORM="wayland;xcb"
-unset QT_WAYLAND_DECORATION
-
-export ELECTRON_USE_WAYLAND=1
-export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
-export CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
-export CHROME_FLAGS="${CHROME_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
-export CHROMIUM_USER_FLAGS="${CHROMIUM_USER_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
-export ELECTRON_USER_FLAGS="${ELECTRON_USER_FLAGS:-$HONEY_CHROMIUM_FLAGS}"
-export MOZ_ENABLE_WAYLAND=1
-export MOZ_USE_XINPUT2=1
-export WINIT_UNIX_BACKEND="${WINIT_UNIX_BACKEND:-wayland}"
-
-case "$(basename -- "${1:-}")" in
-    brave|brave-browser|brave-origin|chromium|chromium-browser|chrome|google-chrome|google-chrome-stable|microsoft-edge|microsoft-edge-stable|opera|vivaldi|vivaldi-stable|electron|codium|code|vscodium|VSCodium|discord|Discord|zen|zen-browser|antigravity-ide)
-        exec "$1" $HONEY_CHROMIUM_FLAGS "${@:2}"
-        ;;
-esac
-
-exec "$@"
-EOF
-    chmod +x "$HOME/.local/bin/honey"
+    write_honey_script
 
     cat > "$HOME/.config/fontconfig/fonts.conf" <<'EOF'
 <?xml version="1.0"?>
