@@ -7,6 +7,8 @@
 #   - Cursor: sincronización Niri/GTK/KDE/xsettingsd/gsettings/Flatpak para evitar temas desalineados.
 #   - Honey Quartz: render grayscale sin RGB/subpixel, pesos Inter equilibrados y soporte Niri/KDE/GNOME.
 #   - AppLauncher: material translúcido con blur contenido dentro de la ventana visible.
+#   - Kitty: Noctis Obscuro, sin CSD/bold y zoom con Ctrl +/-/0.
+#   - Bash: completado, globbing y cd insensibles a mayúsculas/minúsculas.
 # ============================================================
 
 set -euo pipefail
@@ -313,6 +315,7 @@ configure_fedora_power_profiles() {
 prepare_dirs() {
     mkdir -p \
         "$HOME/.config" \
+        "$HOME/.config/kitty" \
         "$HOME/scripts" \
         "$HOME/.local/bin" \
         "$HOME/Imagenes" \
@@ -327,6 +330,7 @@ backup_existing() {
     local path
     for path in \
         "$HOME/.config/niri" \
+        "$HOME/.config/kitty" \
         "$HOME/.config/mako" \
         "$HOME/.config/quickshell" \
         "$HOME/.config/fastfetch" \
@@ -643,6 +647,89 @@ ENV_EOF
     fi
 }
 
+configure_bash_runtime() {
+    local bashrc="$HOME/.bashrc"
+
+    touch "$bashrc"
+
+    # Limpiar versiones anteriores del mismo ajuste para mantener .bashrc idempotente.
+    sed -i \
+        -e '/^# >>> myniri bash case-insensitive >>>$/,/^# <<< myniri bash case-insensitive <<<$/{d}' \
+        -e '/^# Completado de comandos, rutas y cd insensible a mayúsculas\/minúsculas$/d' \
+        -e '/^bind "set completion-ignore-case on"$/d' \
+        -e '/^shopt -s nocaseglob$/d' \
+        -e '/^shopt -s nocasecd$/d' \
+        "$bashrc"
+
+    cat >> "$bashrc" <<'EOF'
+
+# >>> myniri bash case-insensitive >>>
+# Completado, globbing y cd insensibles a mayúsculas/minúsculas
+if [[ $- == *i* ]]; then
+    bind "set completion-ignore-case on"
+    shopt -s nocaseglob
+    shopt -s nocasecd
+fi
+# <<< myniri bash case-insensitive <<<
+EOF
+
+    ok "Bash configurado con completado, globbing y cd sin distinguir mayúsculas/minúsculas"
+}
+
+configure_kitty_runtime() {
+    echo "Configurando Kitty con Noctis Obscuro, sin decoraciones y atajos de zoom..."
+    mkdir -p "$HOME/.config/kitty"
+
+    cat > "$HOME/.config/kitty/kitty.conf" <<'EOF'
+# ==============================================================================
+# KITTY CONFIGURATION - Personal configuration for Ismael
+# ==============================================================================
+
+# Ocultar la barra de título y decoraciones de la ventana
+hide_window_decorations yes
+
+# Configuración de tipografía (desactivar negrita/bold)
+font_family      monospace
+bold_font        monospace
+bold_italic_font monospace
+
+# Atajos para cambiar el tamaño de la fuente (Ctrl + +, Ctrl + -, Ctrl + 0)
+map ctrl+equal       change_font_size all +2.0
+map ctrl+plus        change_font_size all +2.0
+map ctrl+kp_add      change_font_size all +2.0
+map ctrl+minus       change_font_size all -2.0
+map ctrl+kp_subtract change_font_size all -2.0
+map ctrl+0           change_font_size all 0
+map ctrl+kp_0        change_font_size all 0
+
+# Paleta de colores - Noctis Obscuro
+background #020c0e
+foreground #b2cacd
+bold_foreground #b2cacd
+cursor #40d4e7
+selection_background #49d6e9
+color0 #324a4d
+color1 #e66533
+color2 #49e9a6
+color3 #e4b781
+color4 #49ace9
+color5 #df769b
+color6 #49d6e9
+color7 #b2cacd
+color8 #47686c
+color9 #e97749
+color10 #60ebb1
+color11 #e69533
+color12 #60b6eb
+color13 #e798b3
+color14 #60dbeb
+color15 #c1d4d7
+selection_foreground #020c0e
+EOF
+
+    ok "kitty.conf actualizado con Noctis Obscuro, zoom Ctrl, fuente sin bold y decoraciones ocultas"
+}
+
 configure_fonts() {
     echo "Configurando renderizado de fuentes estilo Honey..."
     mkdir -p "$HOME/.config/fontconfig"
@@ -782,9 +869,12 @@ generate_fontconfig() {
     log_info "  - Fuente Código: $mono_font ($mono_weight)"
 
     mkdir -p "$config_dir"
+    local tmp_file
+    tmp_file=$(mktemp "${fontconfig_file}.tmp.XXXXXX")
 
-    # Escribir el archivo xml de fontconfig
-    cat <<FC_EOF > "$fontconfig_file"
+    # Escribir el XML completo y publicarlo de forma atomica evita corrupcion
+    # cuando se lanzan varias aplicaciones con Honey al mismo tiempo.
+    cat <<FC_EOF > "$tmp_file"
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
@@ -833,7 +923,7 @@ FC_EOF
     # Mapear familias comunes a nuestra fuente de UI elegida
     local ui_families=("sans-serif" "system-ui" "ui-sans-serif" "-apple-system" "BlinkMacSystemFont" "Arial" "Helvetica" "Roboto")
     for fam in "${ui_families[@]}"; do
-        cat <<FC_EOF2 >> "$fontconfig_file"
+        cat <<FC_EOF2 >> "$tmp_file"
   <match target="pattern">
     <test name="family" compare="eq"><string>$fam</string></test>
     <edit name="family" mode="prepend" binding="strong"><string>$ui_font</string></edit>
@@ -847,7 +937,7 @@ FC_EOF2
     done
 
     # Mapeo y Pesos para Fuentes de Código (Monospace)
-    cat <<FC_EOF3 >> "$fontconfig_file"
+    cat <<FC_EOF3 >> "$tmp_file"
   <match target="pattern">
     <test name="family" compare="eq"><string>monospace</string></test>
     <edit name="family" mode="prepend" binding="strong"><string>$mono_font</string></edit>
@@ -879,6 +969,7 @@ FC_EOF2
 
 </fontconfig>
 FC_EOF3
+    mv -f "$tmp_file" "$fontconfig_file"
     log_success "Archivo de configuración escrito correctamente en: $fontconfig_file"
 }
 
@@ -1272,6 +1363,16 @@ ENVEOF
 <fontconfig>
   <dir prefix="xdg">fonts</dir>
   <cachedir prefix="xdg">fontconfig</cachedir>
+  <match target="font">
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+    <edit name="hinting" mode="assign"><bool>false</bool></edit>
+    <edit name="autohint" mode="assign"><bool>false</bool></edit>
+    <edit name="hintstyle" mode="assign"><const>hintnone</const></edit>
+    <edit name="rgba" mode="assign"><const>none</const></edit>
+    <edit name="lcdfilter" mode="assign"><const>lcdnone</const></edit>
+    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
+    <edit name="scalable" mode="assign"><bool>true</bool></edit>
+  </match>
 </fontconfig>
 EOF
 
@@ -1815,6 +1916,31 @@ def add_after_marker(text, marker, line):
         return text + "\n" + line + "\n"
     return text[:insert_at + 1] + line + "\n" + text[insert_at + 1:]
 
+if not re.search(r'^\s*prefer-no-csd\b', content, flags=re.MULTILINE):
+    prefer_no_csd = (
+        "\n// Desactivar barras de título del cliente (CSD) para evitar "
+        "decoraciones en la terminal y otras ventanas\n"
+        "prefer-no-csd"
+    )
+    if re.search(r'^screenshot-path .*$' , content, flags=re.MULTILINE):
+        content = re.sub(
+            r'^screenshot-path .*$',
+            lambda match: match.group(0) + prefer_no_csd,
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    elif re.search(r'^include "effects\.kdl".*$', content, flags=re.MULTILINE):
+        content = re.sub(
+            r'^include "effects\.kdl".*$',
+            lambda match: match.group(0) + prefer_no_csd,
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    else:
+        content = prefer_no_csd.lstrip() + "\n\n" + content
+
 content = add_after_marker(
     content,
     "// Gestor de configuraciones X11",
@@ -2278,6 +2404,8 @@ main() {
     fi
 
     configure_environment
+    configure_bash_runtime
+    configure_kitty_runtime
     configure_xdg_desktop_portal_runtime
     configure_keyring_runtime
     configure_brave_password_store
